@@ -171,10 +171,12 @@ function equipVisual(H, rId, lId){
   const box = (p, w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); p.add(m); return m; };
   disposeKids(H.wpn); H.wpn.userData = {};
   const tipY = (WVIS[rId] || WVIS.moonblade)(H.wpn, box, M);
+  const outl = []; H.wpn.traverse(o => { if (o.isMesh && o.material && o.material.isMeshToonMaterial) outl.push(o); }); outl.forEach(ol);
   const tip = new THREE.Object3D(); tip.position.y = tipY; H.wpn.add(tip); H.tip = tip;
   if (H.shieldPivot){ disposeKids(H.shieldPivot); H.armL.remove(H.shieldPivot); H.shieldPivot = null; }
   if (lId && lId !== 'none' && SVIS[lId]){
     const sp = new THREE.Group(); sp.position.set(.06, -.45, .12); H.armL.add(sp); SVIS[lId](sp, box, M); H.shieldPivot = sp;
+    const so = []; sp.traverse(o => { if (o.isMesh && o.material && o.material.isMeshToonMaterial) so.push(o); }); so.forEach(ol);
   }
   H.guardStyle = H.shieldPivot ? null : (H.bubble && ITEMS[rId] && ITEMS[rId].catalyst ? 'bubble' : 'blade');
 }
