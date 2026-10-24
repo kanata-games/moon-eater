@@ -274,6 +274,10 @@ function updatePlayer(dt, I){
   if (!['roll', 'dead', 'stagger', 'guardBreak'].includes(P.state)){ H.rig.rotation.x *= (1 - Math.min(1, dt*12)); H.rig.position.y += (.75 - H.rig.position.y)*Math.min(1, dt*12); }
   if (P.state !== 'gate') resolve(P.pos, .42);
   H.root.position.set(P.pos.x, 0, P.pos.z); H.root.rotation.y = P.face;
+  // 武器の持ち方（構えていない間は武器ごとの持ち方に）
+  const guardWithWeapon = P.guarding && !H.shieldPivot;
+  const holdOn = ['idle', 'guardHit', 'heal', 'stagger', 'roll', 'gate', 'guardBreak'].includes(P.state) && !guardWithWeapon;
+  holdPose(H, WEP().hold, holdOn, Math.min(1, dt*14), Math.sin(P.walk)*Math.min(1, ml));
   if (H.bubble) H.bubble.visible = H.guardStyle === 'bubble' && (P.guarding || P.state === 'guardHit');
   if (H.wpn.userData.spin) H.wpn.userData.spin.rotation.y += dt*2;
   if (H.anim) H.anim(dt, P.animT, P.state === 'idle' ? ml*(P.sprinting ? 7.2 : 4.4) : P.state === 'roll' ? 6 : 0);
