@@ -16,7 +16,7 @@ function castBolt(){
   glow.scale.setScalar(.9); m.add(glow); scene.add(m);
   const v = new THREE.Vector3(Math.sin(P.face), 0, Math.cos(P.face)).multiplyScalar(17);
   if (P.lock){ P.lock.chest(_v); v.y = clamp((_v.y - m.position.y) / Math.max(1, Math.hypot(_v.x - m.position.x, _v.z - m.position.z)) * 17, -6, 6); }
-  bolts.push({ m, v, life: 1.5, dmg: P.spell, target: P.lock });
+  bolts.push({ m, v, life: 1.5, dmg: spellPow(), target: P.lock });
   sfx.bolt();
 }
 // 潮渦：狙った場所に水柱を噴き上げる（少し遅れて発動）
@@ -25,7 +25,7 @@ function castGeyser(){
   if (P.lock && Math.hypot(P.lock.pos.x - P.pos.x, P.lock.pos.z - P.pos.z) < 14){ x = P.lock.pos.x; z = P.lock.pos.z; }
   else { x = P.pos.x + Math.sin(P.face)*4.5; z = P.pos.z + Math.cos(P.face)*4.5; }
   ring(x, z, 2.6, 0x8fd8ff);
-  geysers.push({ x, z, r: 2.6, t: 0, delay: .35, fired: false, dmg: P.spell*2.4, col: null });
+  geysers.push({ x, z, r: 2.6, t: 0, delay: .35, fired: false, dmg: spellPow()*2.4, col: null });
 }
 function splash(pos){ burst(pos, 'water', 10, 3.5, 9, .45); sfx.splash(); }
 

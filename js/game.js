@@ -6,22 +6,25 @@ let running = false, paused = false, menu = null, simTime = 0, hitStop = 0, shak
 let bossFight = false, timers = [];
 let camYaw = Math.PI, camPitch = .28;
 // G = 保存される進行状況
-const G = { lit: {}, bosses: {}, stain: null, loc: null, taken: {}, opened: {} };
+const G = { lit: {}, bosses: {}, stain: null, loc: null, taken: {}, opened: {}, inv: [] };
 function later(sec, fn){ timers.push({ t: simTime + sec, fn }); }
 
 // ---------- セーブ ----------
 const SAVE_KEY = 'save1';
 function save(){
-  store.set(SAVE_KEY, { v: 1, char: P.char, vit: P.vit, end: P.end, str: P.str, souls: P.souls, lit: G.lit, bosses: G.bosses, taken: G.taken, opened: G.opened, stain: G.stain, loc: G.loc, bonfire: P.bonfire, at: Date.now() });
+  store.set(SAVE_KEY, { v: 1, char: P.char, eq: P.eq, inv: G.inv, vit: P.vit, end: P.end, str: P.str, souls: P.souls, lit: G.lit, bosses: G.bosses, taken: G.taken, opened: G.opened, stain: G.stain, loc: G.loc, bonfire: P.bonfire, at: Date.now() });
 }
 function readSave(){ const s = store.get(SAVE_KEY, null); return s && s.v === 1 ? s : null; }
 function applySave(s){
+  const C = CHARS[s.char] || CHARS.astarte;
+  G.inv = Array.isArray(s.inv) ? s.inv.slice() : C.start.inv.slice();
+  P.eq = s.eq ? { r: s.eq.r, l: s.eq.l } : { r: C.start.r, l: C.start.l };
   setCharacter(s.char || 'astarte');
   P.vit = s.vit || 1; P.end = s.end || 1; P.str = s.str || 1; P.souls = s.souls || 0;
   G.lit = s.lit || {}; G.bosses = s.bosses || {}; G.taken = s.taken || {}; G.opened = s.opened || {}; G.stain = s.stain || null; G.loc = s.loc || null; P.bonfire = s.bonfire || null;
   recompute();
 }
-function resetProgress(id){ setCharacter(id); P.vit = P.end = P.str = 1; P.souls = 0; G.lit = {}; G.bosses = {}; G.taken = {}; G.opened = {}; G.stain = null; G.loc = null; P.bonfire = null; recompute(); }
+function resetProgress(id){ const C = CHARS[id] || CHARS.astarte; G.inv = C.start.inv.slice(); P.eq = { r: C.start.r, l: C.start.l }; setCharacter(id); P.vit = P.end = P.str = 1; P.souls = 0; G.lit = {}; G.bosses = {}; G.taken = {}; G.opened = {}; G.stain = null; G.loc = null; P.bonfire = null; recompute(); }
 
 // ---------- ステージの出入り ----------
 function enterStage(id, bonfireId){
@@ -82,6 +85,7 @@ function useBonfire(b){
 function openBonfireMenu(){
   const here = P.bonfire.id, def = (stage.bonfires || []).find(b => b.id === here);
   const items = litBonfires(stage.id).filter(b => b.id !== here).map(b => ({ label: b.name, fn: () => { enterStage(stage.id, b.id); openBonfireMenu(); } }));
+  items.push({ label: '装備を変える', fn: () => openEquip(openBonfireMenu) });
   items.push({ label: '月影の祭壇へ帰る', sub: 'レベルアップは祭壇の灯守りで', fn: () => travel('nexus') });
   openMenu({ title: def ? def.name : '篝火', msg: '休息した。体力と月光の雫が戻り、倒した亡者たちが蘇った。', listTitle: '移動', items });
 }
@@ -129,6 +133,72 @@ $('pVit').addEventListener('click', () => levelUp('vit')); $('pEnd').addEventLis
 function pause(){ paused = true; $('pause').hidden = false; $('ctrlSlot').appendChild($('ctrlBox')); }
 function resume(){ paused = false; $('pause').hidden = true; requestLock(); }
 $('resumeBtn').addEventListener('click', resume);
+$('equipBtn').addEventListener('click', () => { $('pause').hidden = true; openEquip(() => { $('pause').hidden = false; }); });
+
+// ---------- 装備画面 ----------
+let eqSlot = 'r', eqBack = null, eqFocus = null;
+function openEquip(back){
+  eqBack = back; eqSlot = 'r'; eqFocus = null;
+  if (menu === 'menu'){ closeMenuUI(); menu = 'equip'; }
+  $('equip').hidden = false; renderEquip();
+}
+function closeEquip(){
+  $('equip').hidden = true;
+  if (menu === 'equip') menu = 'menu';
+  const b = eqBack; eqBack = null; if (b) b();
+}
+$('eqBack').addEventListener('click', closeEquip);
+$('slotR').addEventListener('click', () => { eqSlot = 'r'; eqFocus = null; renderEquip(); });
+$('slotL').addEventListener('click', () => { eqSlot = 'l'; eqFocus = null; renderEquip(); });
+const speedWord = s => s <= .8 ? 'とても速い' : s < .98 ? '速い' : s <= 1.05 ? '普通' : s < 1.3 ? '遅い' : 'とても遅い';
+function itemStats(id){
+  const it = ITEMS[id];
+  if (it.slot === 'r'){
+    const rows = [['弱攻撃', Math.round(P.atk*it.mult)], ['強攻撃', Math.round(P.atk*it.heavy)], ['速さ', speedWord(it.spd)], ['間合い', it.reach.toFixed(1) + ' m']];
+    if (it.catalyst) rows.push(['魔力', CH().caster ? Math.round(P.spell*(it.spell || 1)) : '—（海音のみ）']);
+    const tags = [];
+    if (it.guardBreak) tags.push('盾を崩す'); if (it.crit > 1) tags.push('致命が深い'); if (it.arc >= 110) tags.push('横に広い'); if (it.arc <= 40) tags.push('突き');
+    if (tags.length) rows.push(['特徴', tags.join('・')]);
+    return rows;
+  }
+  const sh = id === 'none' ? null : it;
+  const drain = sh ? sh.drain : BARE.drain, par = sh ? sh.parry : BARE.parry;
+  return [['受けの強さ', drain <= .5 ? 'とても強い' : drain <= .8 ? '強い' : drain <= 1 ? '普通' : '弱い'],
+    ['削られにくさ', !sh ? '刃で受ける' : sh.chipMul === 0 ? '削られない' : sh.chipMul < 1 ? '少し削られる' : '削られる'],
+    ['パリィ', (par[1] - par[0]) >= .25 ? '合わせやすい' : (par[1] - par[0]) >= .17 ? '普通' : '難しい'],
+    ['構えて歩く', sh && sh.guardSpd ? '遅い' : '普通']];
+}
+function renderEquip(){
+  $('slotR').classList.toggle('on', eqSlot === 'r'); $('slotL').classList.toggle('on', eqSlot === 'l');
+  $('slotRName').textContent = ITEMS[P.eq.r].name; $('slotLName').textContent = ITEMS[P.eq.l].name;
+  const owned = (eqSlot === 'l' ? ['none'] : []).concat(G.inv.filter(id => ITEMS[id] && ITEMS[id].slot === eqSlot));
+  const list = $('eqList'); list.innerHTML = '';
+  owned.forEach(id => {
+    const b = document.createElement('button'); b.className = 'eqitem'; const worn = P.eq[eqSlot] === id;
+    b.classList.toggle('worn', worn); b.classList.toggle('focus', eqFocus === id);
+    const n = document.createElement('span'); n.textContent = ITEMS[id].name;
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = worn ? '装備中' : ITEMS[id].kind;
+    b.append(n, k);
+    b.addEventListener('mouseenter', () => { eqFocus = id; renderDetail(id); });
+    b.addEventListener('focus', () => { eqFocus = id; renderDetail(id); });
+    b.addEventListener('click', () => { P.eq[eqSlot] = id; applyEquip(); sfx.block(); save(); eqFocus = id; renderEquip(); });
+    list.appendChild(b);
+  });
+  renderDetail(eqFocus || P.eq[eqSlot]);
+}
+function renderDetail(id){
+  const it = ITEMS[id], d = $('eqDetail'); d.innerHTML = '';
+  const h = document.createElement('h3'); h.textContent = it.name;
+  const p = document.createElement('p'); p.textContent = it.desc;
+  const dl = document.createElement('dl');
+  const cur = itemStats(P.eq[eqSlot]), rows = itemStats(id);
+  rows.forEach(([k, v], i) => {
+    const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v;
+    const c = cur[i]; if (c && typeof v === 'number' && typeof c[1] === 'number' && v !== c[1]) dd.className = v > c[1] ? 'up' : 'down';
+    dl.append(dt, dd);
+  });
+  d.append(h, p, dl);
+}
 $('titleBtn').addEventListener('click', () => {
   paused = false; running = false; $('pause').hidden = true; $('hud').hidden = true;
   document.querySelector('#title .tcol').after($('ctrlBox'));
@@ -149,6 +219,7 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   keys[e.code] = true; pressed.add(e.code);
   if (e.code === 'Space') spaceT = 0;
+  if (!$('equip').hidden && e.code === 'Escape'){ closeEquip(); return; }
   if (menu === 'menu' && (e.code === 'Escape' || e.code === 'KeyE')){ leaveMenu(); return; }
   if (running && !menu && !locked && (e.code === 'Escape' || e.code === 'KeyP')){ paused ? resume() : pause(); }
 });

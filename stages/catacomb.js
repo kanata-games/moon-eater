@@ -51,7 +51,8 @@ defineStage({
     type: 'necro', x: 0, z: -118, face: 0,
     gate: { x1: -3, z1: -98.8, x2: 3, z2: -97.8, h: 5.4, to: { x: 0, z: -102 }, face: Math.PI },
     arena: { x1: -15, z1: -127, x2: 15, z2: -101 },
-    returnStone: { x: 0, z: -126, face: 0 }
+    returnStone: { x: 0, z: -126, face: 0 },
+    reward: { item: 'bishopStaff', x: 3, z: -122 }
   },
 
   runes: [
@@ -124,6 +125,7 @@ defineStage({
     W(-28.6, -50, -28, -40); W(-28.6, -50.6, -16, -50); W(-28.6, -40, -16, -39.4);
     coffin(-26.5, -45, false); bones(-21, -49, 6, 9);
     soulPickup('offering', -25, -45, 600);
+    itemPickup('dagger', -26.5, -41.5, 'dagger');
 
     // ---- 骨の通路 ----
     W(-2.6, -78, -2, -58.6); W(2, -78, 2.6, -58.6);
@@ -140,6 +142,7 @@ defineStage({
     brazier(-12, -80); brazier(12, -96);
     [[-11, -88], [11, -91], [-5, -96], [6, -80], [-12, -95]].forEach(([x, z], i) => bones(x, z, 10, 20 + i));
     soulPickup('ossuary', -12.5, -91, 300);
+    itemPickup('hammer', 12.5, -92.5, 'hammer');
 
     // ---- 隠し通路（納骨堂の東から入口まで）----
     W(14, -88.6, 30.6, -88); W(14.6, -84, 25.4, -83.4);
@@ -148,6 +151,7 @@ defineStage({
     torch(29.4, -60); torch(25.9, -36); torch(29.4, -14);
     bones(28, -70, 6, 31); coffin(28, -48, false);
     soulPickup('hidden', 28, -40, 400);
+    itemPickup('tomb', 28, -62, 'tomb');
 
     // ---- 司教の墓室 ----
     floorDisc(0, -114, 15.5);

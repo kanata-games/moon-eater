@@ -132,6 +132,25 @@ function soulPickup(id, x, z, souls){
   interactables.push(it);
 }
 
+// ---------- 拾える装備 ----------
+function itemPickup(id, x, z, itemId){
+  if ((G.taken[stage.id] || []).includes(id) || G.inv.includes(itemId)) return;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.soul, color: 0xffd890, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  s.position.set(x, .5, z); s.scale.setScalar(.9); add(s); spinners.push({ obj: s, glow: true, seed: Math.random()*6 });
+  const it = {
+    near: p => Math.hypot(p.x - x, p.z - z) < 1.4,
+    prompt: () => ({ text: '拾う' }),
+    use: () => {
+      s.visible = false; sfx.levelUp();
+      if (!G.taken[stage.id]) G.taken[stage.id] = []; G.taken[stage.id].push(id);
+      if (!G.inv.includes(itemId)) G.inv.push(itemId);
+      interactables.splice(interactables.indexOf(it), 1);
+      banner(`${ITEMS[itemId].name}を手に入れた`, 'soft', 2.4, `${ITEMS[itemId].kind}　装備は一時停止（Esc）か篝火から`); save();
+    }
+  };
+  interactables.push(it);
+}
+
 // ---------- 近道の格子扉（裏側のレバーで開く。開けたら保存される） ----------
 // def: { id, x1, z1, x2, z2, lever:{x,z}, back:(p)=>レバー側にいるか }
 function shortcutGate(def){
@@ -253,6 +272,7 @@ function loadStage(id){
 function spawnReturnStone(fx){
   const r = stage.boss.returnStone; if (!r) return;
   archstone(r.x, r.z, r.face || 0, { glow: true, text: '月影の祭壇へ帰る', use: () => travel('nexus') });
+  const rw = stage.boss.reward; if (rw) itemPickup('reward', rw.x, rw.z, rw.item);
   if (fx){ _v.set(r.x, 2, r.z); burst(_v, 'heal', 40, 4, -1, 1.4, 1.3); sfx.warp(); }
 }
 function unloadStage(){

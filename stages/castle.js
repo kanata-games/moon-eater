@@ -31,7 +31,8 @@ defineStage({
   boss: {
     type: 'moonWarden', x: 0, z: -104, face: 0,
     gate: { x1: -3, z1: -76.8, x2: 3, z2: -76.2, h: 6.6, to: { x: 0, z: -80 }, face: Math.PI },
-    returnStone: { x: 0, z: -112, face: 0 }
+    returnStone: { x: 0, z: -112, face: 0 },
+    reward: { item: 'greatsword', x: 3, z: -108 }
   },
 
   // 書き置き [x, z, 文]
@@ -70,5 +71,8 @@ defineStage({
     // 飾り
     rubble([[-6,4],[7,-6],[-2,-24],[2,-30],[-17,-45],[16,-58],[-6,-70],[10,-73],[-16,-100],[15,-96],[-5,-112],[8,-88]]);
     deadTree(-6, 5); deadTree(-16, -60);
+    // 拾える装備
+    itemPickup('knight', -20, -74, 'knight');
+    itemPickup('spear', 20.5, -72, 'spear');
   }
 });

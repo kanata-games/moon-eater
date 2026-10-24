@@ -71,13 +71,7 @@ function buildAstarte(){
     const g = new THREE.Group(); g.position.set(0, i === 0 ? .05 : .17, i === 0 ? -.3 : 0); parent.add(g);
     box(g, .1 - i*.006, .18, .1 - i*.006, mWhite, 0, .09, 0); tail.push(g); parent = g;
   }
-  // 月刃（細身の長剣・三日月の鍔）
-  box(H.wpn, .05, .22, .05, clam(0x2a2240), 0, 0, 0);
-  const guard = new THREE.Mesh(new THREE.TorusGeometry(.1, .02, 4, 8, Math.PI), mGold); guard.position.y = -.12; guard.rotation.set(0, Math.PI/2, Math.PI); H.wpn.add(guard);
-  box(H.wpn, .04, 1.05, .1, clam(0xc9d2e8), 0, -.66, 0);
-  box(H.wpn, .045, .1, .06, clam(0xe4ebff), 0, -1.22, 0);
-  const tip = new THREE.Object3D(); tip.position.y = -1.25; H.wpn.add(tip); H.tip = tip;
-  H.guardStyle = 'blade';
+  equipVisual(H, 'moonblade', 'none');
   H.root.scale.setScalar(.95);
   H.anim = (dt, t, spd) => {
     tail.forEach((g, i) => { g.rotation.x = (i === 0 ? -1.0 : .28) + Math.sin(t*3 - i*.7)*.08*(1 + spd*.3); g.rotation.z = Math.sin(t*2.2 - i*.6)*(.12 + spd*.05); });
@@ -116,22 +110,16 @@ function buildUmine(){
   skirt(skirtG, .575, .585, .04, -.69, mGold, { start: Math.PI*.16, len: Math.PI*1.68, seg: 14 });
   skirt(H.torso, .27, .33, .62, .3, dbl(ROBE), { start: Math.PI*.2, len: Math.PI*1.6, seg: 10 }); // 上着
   const book = box(H.rig, .16, .2, .06, clam(0x22263c), .28, -.02, .08); book.rotation.y = -.4;
-  // 杖（先に水の結晶）
-  box(H.wpn, .045, .25, .045, clam(0x5a4230), 0, .1, 0);
-  box(H.wpn, .045, 1.25, .045, clam(0x5a4230), 0, -.6, 0);
-  const orbRing = new THREE.Mesh(new THREE.TorusGeometry(.09, .015, 4, 10), mGold); orbRing.position.y = -1.3; H.wpn.add(orbRing);
-  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(.08), new THREE.MeshBasicMaterial({ color: 0x8fd8ff, fog: false })); crystal.position.y = -1.32; crystal.scale.y = 1.5; H.wpn.add(crystal);
-  const tip = new THREE.Object3D(); tip.position.y = -1.4; H.wpn.add(tip); H.tip = tip;
   // 水の膜（ガード時）
   const bubble = new THREE.Mesh(new THREE.SphereGeometry(.95, 12, 8), new THREE.MeshBasicMaterial({ color: 0x7fc8ff, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   bubble.position.set(0, 1.0, .25); bubble.scale.set(1, 1.1, .55); bubble.visible = false; H.root.add(bubble); H.bubble = bubble;
-  H.guardStyle = 'bubble';
+  equipVisual(H, 'staff', 'none');
   H.root.scale.setScalar(.95);
   H.anim = (dt, t, spd) => {
     hair.rotation.x = .08 + Math.min(.45, spd*.07) + Math.sin(t*2)*.03;
     hair.rotation.z = Math.sin(t*1.6)*.04;
     tipG.rotation.z = -.9 + Math.sin(t*2.4)*.06;
-    gem.rotation.y += dt*1.5; crystal.rotation.y += dt*2;
+    gem.rotation.y += dt*1.5;
     skirtG.rotation.x = -Math.min(.12, spd*.02);
     if (bubble.visible) bubble.material.opacity = .18 + Math.sin(t*8)*.05;
   };
@@ -144,11 +132,13 @@ const CHARS = {
   astarte: {
     id: 'astarte', name: 'アスターテ', role: '近接型',
     desc: '猫耳フードの剣士。月刃で斬り込み、刃で攻撃を受け流す。',
+    start: { r: 'moonblade', l: 'none', inv: ['moonblade', 'buckler'] },
     hp: [400, 42], st: [100, 7], atk: [32, 4.8], stat3: '筋力', guardChip: .08, build: buildAstarte
   },
   umine: {
     id: 'umine', name: '海音', role: '魔法型',
     desc: '旅好きの水の魔女。水弾と潮渦で離れて戦い、水の膜で身を守る。',
+    start: { r: 'staff', l: 'none', inv: ['staff', 'buckler'] },
     hp: [320, 36], st: [95, 7], atk: [16, 1.5], spell: [34, 5], mp: [100, 6], stat3: '理力', caster: true, guardChip: .05, build: buildUmine
   }
 };

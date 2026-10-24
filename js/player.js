@@ -6,7 +6,7 @@ const P = {
   pos: new THREE.Vector3(0, 0, 2.2), face: Math.PI, hp: 380, maxHp: 380, st: 95, maxSt: 95, stDelay: 0, atk: 30,
   flasks: 4, maxFlasks: 4, souls: 0, vit: 1, end: 1, str: 1, state: 'idle', t: 0, combo: 0, hitSet: new Set(), swung: false,
   lock: null, bonfire: null, buf: null, bufT: 0, walk: 0, guarding: false, sprinting: false, kb: new THREE.Vector3(), kbT: 0, healed: false,
-  chestV: new THREE.Vector3(), char: 'astarte', mp: 0, maxMp: 0, mpDelay: 0, spell: 0, animT: 0,
+  chestV: new THREE.Vector3(), eq: { r: 'moonblade', l: 'none' }, wact: null, char: 'astarte', mp: 0, maxMp: 0, mpDelay: 0, spell: 0, animT: 0,
   H: null
 };
 // 主人公を切り替える（見た目と能力）
@@ -14,8 +14,22 @@ function setCharacter(id){
   if (!CHARS[id]) id = 'astarte';
   if (P.H) scene.remove(P.H.root);
   P.char = id; P.H = CHARS[id].build(); scene.add(P.H.root);
-  recompute();
+  applyEquip(); recompute();
 }
+// 装備を反映（見た目・攻撃の動き）
+function applyEquip(){
+  if (!ITEMS[P.eq.r]) P.eq.r = CH().start.r;
+  if (!ITEMS[P.eq.l]) P.eq.l = 'none';
+  equipVisual(P.H, P.eq.r, P.eq.l);
+  const W = ITEMS[P.eq.r], s = W.spd, lg = W.lunge || 1.8;
+  P.wact = {
+    light: { dur: .62*s, cost: 16*W.cost, act: [.17*s, .29*s], cancel: .40*s, reach: W.reach, arc: W.arc, mult: W.mult, move: [.05*s, .24*s, lg], kinds: W.kinds, guardBreak: !!W.guardBreak },
+    heavy: { dur: 1.0*s, cost: 32*W.cost, act: [.46*s, .6*s], cancel: .78*s, reach: W.reach + .25, arc: W.arc*.85, mult: W.heavy, move: [.38*s, .58*s, lg*1.45], heavy: true, kind: W.heavyKind || 'heavy' }
+  };
+}
+const getAct = s => (s === 'light' || s === 'heavy') ? P.wact[s] : ACT[s];
+const SHIELD = () => P.eq.l !== 'none' ? ITEMS[P.eq.l] : null;
+const spellPow = () => P.spell*((ITEMS[P.eq.r] && ITEMS[P.eq.r].spell) || 1);
 const CH = () => CHARS[P.char];
 function recompute(){
   const C = CH(), n3 = P.str - 1;
@@ -65,14 +79,14 @@ function startCrit(c){
 }
 function startAction(a, mv, ml){
   if (a === 'heal'){ if (P.flasks <= 0) return true; P.flasks--; setState('heal'); return true; }
-  if (ACT[a].cost && P.st <= 0) return false;
+  if (getAct(a).cost && P.st <= 0) return false;
   if (a === 'light' || a === 'heavy'){ const c = findCrit(); if (c){ startCrit(c); return true; } }
   // 魔法型：MPが足りれば魔法、足りなければ杖で殴る
-  if (CH().caster && (a === 'light' || a === 'heavy')){
+  if (CH().caster && ITEMS[P.eq.r].catalyst && (a === 'light' || a === 'heavy')){
     const ca = a === 'light' ? 'cast' : 'castHeavy';
     if (P.mp >= ACT[ca].mp){ a = ca; P.mp -= ACT[ca].mp; P.mpDelay = 1.3; }
   }
-  const d = ACT[a];
+  const d = getAct(a);
   if (P.lock && a !== 'roll') P.face = angTo(P.lock);
   else if (ml > .2) P.face = Math.atan2(mv.x, mv.z);
   if (a === 'roll'){ P.rollDir = ml > .2 ? Math.atan2(mv.x, mv.z) : P.face; P.face = P.rollDir; sfx.roll(); }
@@ -89,7 +103,7 @@ function playerHitCheck(d){
     if (dist > d.reach) continue;
     if (Math.abs(angDiff(P.face, Math.atan2(dx, dz))) > d.arc*DEG/2 && dist > .3) continue;
     P.hitSet.add(e);
-    const r = e.hurt(dmg, !!d.heavy, Math.atan2(-dx, -dz));
+    const r = e.hurt(dmg, !!d.heavy || !!d.guardBreak, Math.atan2(-dx, -dz));
     e.chest(_v);
     if (r === 'blocked'){ burst(_v, 'spark', 10, 4, 6, .35); hitStop = .04; }
     else if (r === 'break'){ burst(_v, 'spark', 18, 5, 6, .45); hitStop = .1; shake = .2; }
@@ -101,13 +115,14 @@ function hurtPlayer(dmg, src, A = {}){
   if (P.state === 'dead' || P.state === 'crit' || P.state === 'gate') return 'none';
   const ang = Math.atan2(src.x - P.pos.x, src.z - P.pos.z), facing = Math.abs(angDiff(P.face, ang)) < 1.35;
   if (P.state === 'roll' && P.t >= ACT.roll.iframe[0] && P.t <= ACT.roll.iframe[1]) return 'dodge';
-  if (P.state === 'parry' && P.t >= ACT.parry.window[0] && P.t <= ACT.parry.window[1] && facing && !A.unparry){ sfx.parry(); hitStop = .15; shake = .1; return 'parry'; }
+  const SH = SHIELD(), pw = SH ? SH.parry : BARE.parry;
+  if (P.state === 'parry' && P.t >= pw[0] && P.t <= pw[1] && facing && !A.unparry){ sfx.parry(); hitStop = .15; shake = .1; return 'parry'; }
   const kb = (s) => { P.kb.set(P.pos.x - src.x, 0, P.pos.z - src.z).normalize().multiplyScalar(s); P.kbT = .22; };
   P.chestV.set(P.pos.x, 1.3, P.pos.z);
   if (P.guarding && facing && (P.state === 'idle' || P.state === 'guardHit')){
-    P.st -= dmg*(A.aoe ? 1.05 : .82); P.stDelay = .8;
+    P.st -= dmg*(A.aoe ? 1.05 : .82)*(SH ? SH.drain : BARE.drain); P.stDelay = .8;
     if (P.st < 0){ P.st = 0; setState('guardBreak'); P.hp -= dmg*.35; sfx.guardBreak(); kb(5); burst(P.chestV, 'spark', 16, 5, 6, .4); }
-    else { setState('guardHit'); P.hp -= dmg*Math.max(A.chip || 0, CH().guardChip || 0); sfx.block(); kb(3.5); burst(P.chestV, CH().caster ? 'water' : 'spark', 8, 4, 6, .3); }
+    else { setState('guardHit'); P.hp -= dmg*(SH ? (A.chip || 0)*SH.chipMul : Math.max(A.chip || 0, CH().guardChip || 0)); sfx.block(); kb(3.5); burst(P.chestV, CH().caster ? 'water' : 'spark', 8, 4, 6, .3); }
     if (P.hp <= 0) killPlayer(); return 'block';
   }
   P.hp -= dmg; sfx.hurt(); shake = Math.max(shake, .28); burst(P.chestV, 'blood', 14, 3.5, 9, .55); hitStop = .06;
@@ -139,12 +154,12 @@ function updatePlayer(dt, I){
   }
   for (const a of ['light', 'heavy', 'roll', 'parry', 'heal']) if (I[a]){ P.buf = a; P.bufT = simTime; }
   if (P.buf && simTime - P.bufT > .3) P.buf = null;
-  const def = ACT[P.state];
+  const def = getAct(P.state);
   if (P.state !== 'idle' && def && P.t >= def.dur){
     if (P.state === 'gate') startBossFight();
     setState('idle'); H.rig.rotation.x = 0;
   }
-  const d0 = ACT[P.state];
+  const d0 = getAct(P.state);
   const canAct = P.state === 'idle' || (d0 && P.t >= d0.cancel);
   if (canAct && P.buf){ if (startAction(P.buf, mv, ml)) P.buf = null; }
   P.sprinting = false;
@@ -153,7 +168,7 @@ function updatePlayer(dt, I){
     case 'idle': {
       const spr = I.sprint && ml > .2 && P.st > 0 && !P.guarding;
       if (spr){ P.sprinting = true; P.st -= 16*dt; P.stDelay = .5; }
-      const spd = P.guarding ? 2.1 : spr ? 7.2 : 4.4;
+      const spd = P.guarding ? 2.1*((SHIELD() && SHIELD().guardSpd) || 1) : spr ? 7.2 : 4.4;
       P.pos.x += mv.x*spd*dt; P.pos.z += mv.z*spd*dt;
       if (P.lock && !spr) P.face = turnTo(P.face, angTo(P.lock), 14*dt);
       else if (ml > .15) P.face = turnTo(P.face, Math.atan2(mv.x, mv.z), 12*dt);
@@ -162,7 +177,7 @@ function updatePlayer(dt, I){
       break;
     }
     case 'light': case 'heavy': {
-      const d = ACT[P.state], kind = P.state === 'heavy' ? 'heavy' : (P.combo ? 'side' : 'over');
+      const d = getAct(P.state), kind = P.state === 'heavy' ? d.kind : d.kinds[P.combo ? 1 : 0];
       if (P.t < d.act[0] && P.lock) P.face = turnTo(P.face, angTo(P.lock), 6*dt);
       if (P.t >= d.move[0] && P.t <= d.move[1]){ P.pos.x += Math.sin(P.face)*d.move[2]*dt; P.pos.z += Math.cos(P.face)*d.move[2]*dt; }
       if (!P.swung && P.t >= d.act[0]){ P.swung = true; sfx.swing(P.state === 'heavy'); }
@@ -213,7 +228,7 @@ function updatePlayer(dt, I){
       const e = P.critE, t = P.t;
       if (t < .5) attackPose(H, 'thrust', 0, t/.5); else if (t < .65) attackPose(H, 'thrust', 1, (t - .5)/.15); else if (t > 1.1) attackPose(H, 'thrust', 2, Math.min(1, (t - 1.1)/.5));
       if (!P.critHit && t >= .6){
-        P.critHit = true; const dmg = P.atk*(P.critType === 'back' ? 4 : 4.5)*(e.T.boss ? .85 : 1);
+        P.critHit = true; const dmg = P.atk*(ITEMS[P.eq.r].mult*.5 + .5)*(ITEMS[P.eq.r].crit || 1)*(P.critType === 'back' ? 4 : 4.5)*(e.T.boss ? .85 : 1);
         e.hp -= dmg; e.hpShow = 3; e.chest(_v); burst(_v, 'blood', 28, 5, 9, .7, 1.3); sfx.crit(); hitStop = .16; shake = .25;
         if (e.T.boss && e.hp > 0 && !e.phase2 && e.hp < e.T.hp*.5) e.pendingP2 = true;
       }
@@ -228,7 +243,8 @@ function updatePlayer(dt, I){
   if (!['roll', 'dead', 'stagger', 'guardBreak'].includes(P.state)){ H.rig.rotation.x *= (1 - Math.min(1, dt*12)); H.rig.position.y += (.75 - H.rig.position.y)*Math.min(1, dt*12); }
   if (P.state !== 'gate') resolve(P.pos, .42);
   H.root.position.set(P.pos.x, 0, P.pos.z); H.root.rotation.y = P.face;
-  if (H.bubble) H.bubble.visible = P.guarding || P.state === 'guardHit';
+  if (H.bubble) H.bubble.visible = H.guardStyle === 'bubble' && (P.guarding || P.state === 'guardHit');
+  if (H.wpn.userData.spin) H.wpn.userData.spin.rotation.y += dt*2;
   if (H.anim) H.anim(dt, P.animT, P.state === 'idle' ? ml*(P.sprinting ? 7.2 : 4.4) : P.state === 'roll' ? 6 : 0);
 }
 

@@ -99,8 +99,24 @@
           <option value="1.25">なめらか（重い）</option>
         </select>
       </label>
+      <button id="equipBtn" class="btn">装備を変える</button>
       <button id="titleBtn" class="btn">タイトルへ戻る<small>進行は最後に休んだ時点まで保存されています</small></button>
       <div id="ctrlSlot"></div>
+    </div>
+  </div>
+
+  <div id="equip" class="screen center" hidden>
+    <div class="panel eqpanel">
+      <h2>装備</h2>
+      <div class="slots">
+        <button class="slot" id="slotR"><span class="sl">右手</span><span class="sv" id="slotRName"></span></button>
+        <button class="slot" id="slotL"><span class="sl">左手</span><span class="sv" id="slotLName"></span></button>
+      </div>
+      <div class="eqbody">
+        <div class="list" id="eqList"></div>
+        <div class="eqdetail" id="eqDetail"></div>
+      </div>
+      <button id="eqBack" class="btn primary">戻る</button>
     </div>
   </div>
 
@@ -131,6 +147,7 @@
 <script src="js/world.js"></script>
 <script src="js/rig.js"></script>
 <script src="js/characters.js"></script>
+<script src="js/items.js"></script>
 <script src="js/enemies.js"></script>
 <script src="js/player.js"></script>
 <script src="js/magic.js"></script>
