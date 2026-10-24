@@ -28,6 +28,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 .bar.hp b{background:#c9a868;opacity:.55}
 .bar.hp i{background:linear-gradient(#cf4040,#7a171d)}
 .bar.st i{background:linear-gradient(#78ad66,#3d6a33)}
+.bar.mp i{background:linear-gradient(#6aa8e8,#2c5594)}
 #flask{position:absolute;left:calc(20px + env(safe-area-inset-left,0px));bottom:calc(20px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);padding:8px 12px 8px 10px}
 .vial{width:16px;height:24px;position:relative}
 .vial::before{content:"";position:absolute;left:5px;top:0;width:6px;height:6px;background:#5a5040}
@@ -107,4 +108,17 @@ select{background:#14151e;color:var(--bone);border:1px solid var(--line);padding
 .head b{font-family:var(--f-disp);font-size:18px;color:var(--bone);font-weight:500;font-variant-numeric:tabular-nums}
 .list{display:grid;gap:8px}
 .sep{font-size:11px;letter-spacing:.2em;color:var(--ash)}
+/* 旅人選択 */
+.select{display:flex;flex-direction:column;justify-content:flex-end;padding-block:24px;background:linear-gradient(rgba(6,7,12,0) 35%,rgba(6,7,12,.9) 70%)}
+.selwrap{width:min(860px,100%);margin:0 auto;display:grid;gap:14px}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:620px){.cards{grid-template-columns:1fr}}
+.card{appearance:none;text-align:left;cursor:pointer;background:rgba(14,15,24,.88);border:1px solid var(--line);color:var(--bone);padding:16px 18px;display:grid;gap:6px;min-width:0;font-family:var(--f-ui)}
+.card:hover{border-color:var(--bone)}
+.card.on{border-color:rgba(227,147,64,.8);box-shadow:inset 0 0 0 1px rgba(227,147,64,.35)}
+.card .role{font-size:11px;letter-spacing:.24em;color:var(--ember)}
+.card .cname{font-family:var(--f-disp);font-size:28px;letter-spacing:.1em}
+.card .cdesc{font-size:13px;line-height:1.7;color:#bdb6a6}
+.card .cstat{font-size:12px;color:var(--ash)}
+.selbtns{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 @media (prefers-reduced-motion:reduce){#banner,#fade,#area{transition:none}}

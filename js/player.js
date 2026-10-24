@@ -6,11 +6,23 @@ const P = {
   pos: new THREE.Vector3(0, 0, 2.2), face: Math.PI, hp: 380, maxHp: 380, st: 95, maxSt: 95, stDelay: 0, atk: 30,
   flasks: 4, maxFlasks: 4, souls: 0, vit: 1, end: 1, str: 1, state: 'idle', t: 0, combo: 0, hitSet: new Set(), swung: false,
   lock: null, bonfire: null, buf: null, bufT: 0, walk: 0, guarding: false, sprinting: false, kb: new THREE.Vector3(), kbT: 0, healed: false,
-  chestV: new THREE.Vector3(),
-  H: humanoid({ body: 0x5a6070, trim: 0x8a7a50, eye: 0xa8c4ff, weapon: 'sword', shield: true, shieldColor: 0x5a4e3c, cape: 0x3a2228, crest: true, scale: .92 })
+  chestV: new THREE.Vector3(), char: 'astarte', mp: 0, maxMp: 0, mpDelay: 0, spell: 0, animT: 0,
+  H: null
 };
-scene.add(P.H.root);
-function recompute(){ P.maxHp = 380 + (P.vit - 1)*40; P.maxSt = 95 + (P.end - 1)*7; P.atk = 30 + (P.str - 1)*4.5; }
+// 主人公を切り替える（見た目と能力）
+function setCharacter(id){
+  if (!CHARS[id]) id = 'astarte';
+  if (P.H) scene.remove(P.H.root);
+  P.char = id; P.H = CHARS[id].build(); scene.add(P.H.root);
+  recompute();
+}
+const CH = () => CHARS[P.char];
+function recompute(){
+  const C = CH(), n3 = P.str - 1;
+  P.maxHp = C.hp[0] + (P.vit - 1)*C.hp[1]; P.maxSt = C.st[0] + (P.end - 1)*C.st[1]; P.atk = C.atk[0] + n3*C.atk[1];
+  P.spell = C.spell ? C.spell[0] + n3*C.spell[1] : 0; P.maxMp = C.mp ? C.mp[0] + n3*C.mp[1] : 0;
+}
+setCharacter('astarte');
 
 // 行動ごとの長さ。act=攻撃判定の時間帯 cancel=次の行動を受け付け始める時間 iframe=無敵時間 window=パリィ受付
 const ACT = {
@@ -20,7 +32,10 @@ const ACT = {
   parry:  { dur: .7,  cost: 12, window: [.05, .24], cancel: .55 },
   heal:   { dur: 1.35, cost: 0, cancel: 99 },
   stagger:{ dur: .55, cancel: 99 }, guardHit: { dur: .32, cancel: .2 }, guardBreak: { dur: 1.15, cancel: 99 }, crit: { dur: 1.6, cancel: 99 },
-  gate:   { dur: 1.4, cancel: 99 }
+  gate:   { dur: 1.4, cancel: 99 },
+  // 魔法（海音）。mp=消費MP
+  cast:      { dur: .58, cost: 8,  mp: 9,  act: [.24, .28], cancel: .44 },
+  castHeavy: { dur: 1.1, cost: 18, mp: 26, act: [.56, .62], cancel: .9 }
 };
 
 function setState(s){ P.state = s; P.t = 0; P.hitSet.clear(); P.swung = false; P.healed = false; }
@@ -50,8 +65,14 @@ function startCrit(c){
 }
 function startAction(a, mv, ml){
   if (a === 'heal'){ if (P.flasks <= 0) return true; P.flasks--; setState('heal'); return true; }
-  const d = ACT[a]; if (d.cost && P.st <= 0) return false;
+  if (ACT[a].cost && P.st <= 0) return false;
   if (a === 'light' || a === 'heavy'){ const c = findCrit(); if (c){ startCrit(c); return true; } }
+  // 魔法型：MPが足りれば魔法、足りなければ杖で殴る
+  if (CH().caster && (a === 'light' || a === 'heavy')){
+    const ca = a === 'light' ? 'cast' : 'castHeavy';
+    if (P.mp >= ACT[ca].mp){ a = ca; P.mp -= ACT[ca].mp; P.mpDelay = 1.3; }
+  }
+  const d = ACT[a];
   if (P.lock && a !== 'roll') P.face = angTo(P.lock);
   else if (ml > .2) P.face = Math.atan2(mv.x, mv.z);
   if (a === 'roll'){ P.rollDir = ml > .2 ? Math.atan2(mv.x, mv.z) : P.face; P.face = P.rollDir; sfx.roll(); }
@@ -86,7 +107,7 @@ function hurtPlayer(dmg, src, A = {}){
   if (P.guarding && facing && (P.state === 'idle' || P.state === 'guardHit')){
     P.st -= dmg*(A.aoe ? 1.05 : .82); P.stDelay = .8;
     if (P.st < 0){ P.st = 0; setState('guardBreak'); P.hp -= dmg*.35; sfx.guardBreak(); kb(5); burst(P.chestV, 'spark', 16, 5, 6, .4); }
-    else { setState('guardHit'); P.hp -= dmg*(A.chip || 0); sfx.block(); kb(3.5); burst(P.chestV, 'spark', 8, 4, 6, .3); }
+    else { setState('guardHit'); P.hp -= dmg*Math.max(A.chip || 0, CH().guardChip || 0); sfx.block(); kb(3.5); burst(P.chestV, CH().caster ? 'water' : 'spark', 8, 4, 6, .3); }
     if (P.hp <= 0) killPlayer(); return 'block';
   }
   P.hp -= dmg; sfx.hurt(); shake = Math.max(shake, .28); burst(P.chestV, 'blood', 14, 3.5, 9, .55); hitStop = .06;
@@ -108,6 +129,8 @@ function updatePlayer(dt, I){
   const mv = { x: fx*I.mz - fz*I.mx, z: fz*I.mz + fx*I.mx };
   let ml = Math.hypot(mv.x, mv.z); if (ml > 1){ mv.x /= ml; mv.z /= ml; ml = 1; }
   if (P.stDelay > 0) P.stDelay -= dt; else if (!P.sprinting) P.st = Math.min(P.maxSt, P.st + (P.guarding ? 18 : 50)*dt);
+  if (P.maxMp){ if (P.mpDelay > 0) P.mpDelay -= dt; else P.mp = Math.min(P.maxMp, P.mp + 3.5*dt); }
+  P.animT += dt;
   if (P.kbT > 0){ P.kbT -= dt; P.pos.x += P.kb.x*dt; P.pos.z += P.kb.z*dt; }
   P.t += dt;
   if (P.state === 'dead'){
@@ -161,11 +184,24 @@ function updatePlayer(dt, I){
     }
     case 'parry': {
       const f = P.t, out = f < .25 ? Math.min(1, f/.07) : Math.max(0, 1 - (f - .25)/.4);
-      applyPose(H, { aL: [-.2 - 1.3*out, 0, 1.1*out], sh: out, tor: [0, -.5*out, 0], aR: REST.aR }, .6);
+      if (H.shieldPivot) applyPose(H, { aL: [-.2 - 1.3*out, 0, 1.1*out], sh: out, tor: [0, -.5*out, 0], aR: REST.aR }, .6);
+      else applyPose(H, { aR: [-.35 - 1.3*out, 0, -1.3*out], aL: [-.2 - .5*out, 0, .4*out], tor: [0, .55*out, 0] }, .6); // 武器で弾く
+      break;
+    }
+    case 'cast': case 'castHeavy': {
+      const d = ACT[P.state], heavy = P.state === 'castHeavy';
+      if (P.t < d.act[0] && P.lock) P.face = turnTo(P.face, angTo(P.lock), 8*dt);
+      if (!P.swung && P.t >= d.act[0]){ P.swung = true; heavy ? castGeyser() : castBolt(); }
+      const stg = P.t < d.act[0] ? 0 : P.t < d.act[1] ? 1 : 2;
+      const f = stg === 0 ? P.t/d.act[0] : stg === 1 ? (P.t - d.act[0])/(d.act[1] - d.act[0]) : Math.min(1, (P.t - d.act[1])/(d.dur - d.act[1]));
+      attackPose(H, heavy ? 'slam' : 'thrust', stg, f);
+      if (!heavy && stg === 1) H.armR.rotation.z = 0; // 杖をまっすぐ前に
+      applyPose(H, { legR: [.3, 0, 0], legL: [-.3, 0, 0], rig: [0, 0, 0], rigY: .75 }, .3);
+      if (P.t < d.act[0] && Math.random() < dt*30){ H.tip.getWorldPosition(_v); burst(_v, 'water', 1, .6, -1, .4, .8); }
       break;
     }
     case 'heal': {
-      if (!P.healed && P.t >= .85){ P.healed = true; P.hp = Math.min(P.maxHp, P.hp + P.maxHp*.42); sfx.heal(); _v.set(P.pos.x, 1.2, P.pos.z); burst(_v, 'heal', 18, 1.5, -2, .9); }
+      if (!P.healed && P.t >= .85){ P.healed = true; P.hp = Math.min(P.maxHp, P.hp + P.maxHp*.42); if (P.maxMp) P.mp = Math.min(P.maxMp, P.mp + P.maxMp*.4); sfx.heal(); _v.set(P.pos.x, 1.2, P.pos.z); burst(_v, 'heal', 18, 1.5, -2, .9); }
       P.pos.x += mv.x*1.3*dt; P.pos.z += mv.z*1.3*dt;
       applyPose(H, { aL: [-2.4, 0, -.5], aR: REST.aR, tor: [-.1, 0, 0], sh: 0 }, .2);
       break;
@@ -192,6 +228,8 @@ function updatePlayer(dt, I){
   if (!['roll', 'dead', 'stagger', 'guardBreak'].includes(P.state)){ H.rig.rotation.x *= (1 - Math.min(1, dt*12)); H.rig.position.y += (.75 - H.rig.position.y)*Math.min(1, dt*12); }
   if (P.state !== 'gate') resolve(P.pos, .42);
   H.root.position.set(P.pos.x, 0, P.pos.z); H.root.rotation.y = P.face;
+  if (H.bubble) H.bubble.visible = P.guarding || P.state === 'guardHit';
+  if (H.anim) H.anim(dt, P.animT, P.state === 'idle' ? ml*(P.sprinting ? 7.2 : 4.4) : P.state === 'roll' ? 6 : 0);
 }
 
 // プレイヤーと敵、敵同士が重ならないように押し合う

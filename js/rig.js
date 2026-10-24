@@ -63,5 +63,8 @@ function applyPose(H, p, k){
 }
 function locoPose(H, phase, amt, guard, dt, spr){
   const s = Math.sin(phase), k = 1 - Math.exp(-dt*16);
-  applyPose(H, { legR: [s*.75*amt, 0, 0], legL: [-s*.75*amt, 0, 0], aR: [-.35 - (spr ? .5 : 0) - s*.3*amt, 0, 0], aL: guard ? [-1.25, 0, 0] : [-.2 + s*.3*amt, 0, 0], sh: guard ? 1.25 : 0, tor: [spr ? .3 : .06*amt, 0, 0] }, k);
+  let aR = [-.35 - (spr ? .5 : 0) - s*.3*amt, 0, 0], aL = guard ? [-1.25, 0, 0] : [-.2 + s*.3*amt, 0, 0];
+  if (guard && H.guardStyle === 'blade'){ aR = [-1.35, 0, -1.15]; aL = [-1.0, 0, .55]; }   // 刃を横にして受ける
+  if (guard && H.guardStyle === 'bubble'){ aR = [-1.3, 0, -.15]; aL = [-.9, 0, .35]; }    // 杖を前に、水の膜
+  applyPose(H, { legR: [s*.75*amt, 0, 0], legL: [-s*.75*amt, 0, 0], aR, aL, sh: guard ? 1.25 : 0, tor: [spr ? .3 : .06*amt, 0, 0] }, k);
 }

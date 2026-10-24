@@ -151,7 +151,8 @@ const partMats = {
   soul: new THREE.MeshBasicMaterial({ color: 0xbff0e6, fog: false }),
   dust: new THREE.MeshBasicMaterial({ color: 0x7a7468 }),
   heal: new THREE.MeshBasicMaterial({ color: 0xd8e2ff, fog: false }),
-  purple: new THREE.MeshBasicMaterial({ color: 0x9a6cff, fog: false })
+  purple: new THREE.MeshBasicMaterial({ color: 0x9a6cff, fog: false }),
+  water: new THREE.MeshBasicMaterial({ color: 0x8fd8ff, fog: false })
 };
 function burst(pos, kind, n, speed = 4, grav = 9, life = .6, size = 1){
   for (let i = 0; i < n; i++){
@@ -172,6 +173,7 @@ function clearFx(){
   parts.forEach(p => scene.remove(p.m)); parts.length = 0;
   rings.forEach(r => { scene.remove(r.m); r.m.geometry.dispose(); r.m.material.dispose(); }); rings.length = 0;
   glints.forEach(g => { scene.remove(g.s); g.s.material.dispose(); }); glints.length = 0;
+  if (typeof clearMagic === 'function') clearMagic();
 }
 function updateFx(sdt){
   for (let i = parts.length - 1; i >= 0; i--){

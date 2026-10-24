@@ -12,15 +12,16 @@ function later(sec, fn){ timers.push({ t: simTime + sec, fn }); }
 // ---------- セーブ ----------
 const SAVE_KEY = 'save1';
 function save(){
-  store.set(SAVE_KEY, { v: 1, vit: P.vit, end: P.end, str: P.str, souls: P.souls, lit: G.lit, bosses: G.bosses, stain: G.stain, loc: G.loc, bonfire: P.bonfire, at: Date.now() });
+  store.set(SAVE_KEY, { v: 1, char: P.char, vit: P.vit, end: P.end, str: P.str, souls: P.souls, lit: G.lit, bosses: G.bosses, stain: G.stain, loc: G.loc, bonfire: P.bonfire, at: Date.now() });
 }
 function readSave(){ const s = store.get(SAVE_KEY, null); return s && s.v === 1 ? s : null; }
 function applySave(s){
+  setCharacter(s.char || 'astarte');
   P.vit = s.vit || 1; P.end = s.end || 1; P.str = s.str || 1; P.souls = s.souls || 0;
   G.lit = s.lit || {}; G.bosses = s.bosses || {}; G.stain = s.stain || null; G.loc = s.loc || null; P.bonfire = s.bonfire || null;
   recompute();
 }
-function resetProgress(){ P.vit = P.end = P.str = 1; P.souls = 0; G.lit = {}; G.bosses = {}; G.stain = null; G.loc = null; P.bonfire = null; recompute(); }
+function resetProgress(id){ setCharacter(id); P.vit = P.end = P.str = 1; P.souls = 0; G.lit = {}; G.bosses = {}; G.stain = null; G.loc = null; P.bonfire = null; recompute(); }
 
 // ---------- ステージの出入り ----------
 function enterStage(id, bonfireId){
@@ -34,8 +35,8 @@ function enterStage(id, bonfireId){
     P.bonfire = { stage: id, id: b.id };
   }
   P.pos.set(sp.x, 0, sp.z); P.face = sp.face; camYaw = sp.face; camPitch = .28;
-  P.hp = P.maxHp; P.st = P.maxSt; P.flasks = P.maxFlasks; P.lock = null; P.kbT = 0; P.buf = null;
-  setState('idle'); resetPlayerBody(); hpLagV = P.hp;
+  P.hp = P.maxHp; P.st = P.maxSt; P.mp = P.maxMp; P.flasks = P.maxFlasks; P.lock = null; P.kbT = 0; P.buf = null;
+  P.H.root.visible = true; setState('idle'); resetPlayerBody(); hpLagV = P.hp;
   curArea = '';
   G.loc = { stage: id, bonfire: stage.hub ? null : P.bonfire.id };
   save();
@@ -116,10 +117,12 @@ const cost = () => Math.round(240*Math.pow(1.12, level() - 1));
 function renderLevel(){
   $('lvNum').textContent = level(); $('lvSouls').textContent = P.souls; $('needSouls').textContent = cost();
   $('vVit').textContent = P.vit; $('vEnd').textContent = P.end; $('vStr').textContent = P.str;
-  $('dVit').textContent = `最大HP ${P.maxHp}`; $('dEnd').textContent = `スタミナ ${P.maxSt}`; $('dStr').textContent = `攻撃力 ${Math.round(P.atk)}`;
+  $('dVit').textContent = `最大HP ${P.maxHp}`; $('dEnd').textContent = `スタミナ ${P.maxSt}`;
+  $('lStr').textContent = CH().stat3;
+  $('dStr').textContent = CH().caster ? `魔力 ${Math.round(P.spell)}　MP ${P.maxMp}` : `攻撃力 ${Math.round(P.atk)}`;
   const can = P.souls >= cost(); ['pVit', 'pEnd', 'pStr'].forEach(id => $(id).disabled = !can);
 }
-function levelUp(stat){ if (P.souls < cost()) return; P.souls -= cost(); P[stat]++; recompute(); P.hp = P.maxHp; P.st = P.maxSt; hpLagV = P.hp; soulShown = P.souls; renderLevel(); sfx.levelUp(); save(); }
+function levelUp(stat){ if (P.souls < cost()) return; P.souls -= cost(); P[stat]++; recompute(); P.hp = P.maxHp; P.st = P.maxSt; P.mp = P.maxMp; hpLagV = P.hp; soulShown = P.souls; renderLevel(); sfx.levelUp(); save(); }
 $('pVit').addEventListener('click', () => levelUp('vit')); $('pEnd').addEventListener('click', () => levelUp('end')); $('pStr').addEventListener('click', () => levelUp('str'));
 
 function pause(){ paused = true; $('pause').hidden = false; $('ctrlSlot').appendChild($('ctrlBox')); }
@@ -246,6 +249,8 @@ function updateHUD(dt){
   $('hpBar').style.width = (P.maxHp*.58) + 'px'; $('stBar').style.width = (P.maxSt*1.9) + 'px';
   $('hpFill').style.width = (Math.max(0, P.hp)/P.maxHp*100) + '%'; $('hpLag').style.width = (hpLagV/P.maxHp*100) + '%';
   $('stFill').style.width = (Math.max(0, P.st)/P.maxSt*100) + '%';
+  $('mpBar').hidden = !P.maxMp;
+  if (P.maxMp){ $('mpBar').style.width = (P.maxMp*1.6) + 'px'; $('mpFill').style.width = (Math.max(0, P.mp)/P.maxMp*100) + '%'; }
   $('flaskNum').textContent = '×' + P.flasks; $('vial').classList.toggle('empty', P.flasks === 0);
   soulShown += (P.souls - soulShown)*Math.min(1, dt*6); if (Math.abs(P.souls - soulShown) < 1) soulShown = P.souls;
   $('soulNum').textContent = Math.round(soulShown);
@@ -270,7 +275,15 @@ function updateHUD(dt){
 
 // ---------- カメラ ----------
 const probe = new THREE.Vector3();
+let camMode = 'title', selChar = 'astarte';
+const previews = {};
 function updateCamera(dt){
+  if (!running && camMode === 'select'){
+    const tx = selChar === 'astarte' ? -1.3 : 1.3;
+    camera.position.x += (tx*.55 - camera.position.x)*Math.min(1, dt*4 || .05);
+    camera.position.y = 1.75; camera.position.z = 8.9;
+    camera.lookAt(camera.position.x*.9, .55, 4); return;
+  }
   if (!running){
     const t = performance.now()/1000*.07;
     camera.position.set(Math.sin(t)*7.5, 3.2, 1 + Math.cos(t)*7.5); camera.lookAt(0, 1.2, -3); return;
@@ -348,8 +361,9 @@ function frame(now){
   if (sim){ sdt = dt; if (hitStop > 0){ hitStop -= dt; sdt = dt*.08; } step(sdt); }
   pressed.clear();
   animateWorld(dt, now/1000);
-  updateFx(sdt);
-  updateCamera(sim ? dt : 0);
+  updateFx(sdt); updateMagic(sdt);
+  if (!running && camMode === 'select') animatePreviews(dt, now/1000);
+  updateCamera(sim || camMode === 'select' ? dt : 0);
   renderer.render(scene, camera);
   if (running) updateHUD(dt);
 }
@@ -362,18 +376,20 @@ function showTitle(){
   $('contBtn').hidden = !s;
   if (s){
     const where = s.loc && STAGES[s.loc.stage] ? STAGES[s.loc.stage].name : '月影の祭壇';
-    $('contInfo').textContent = `${where}　レベル ${(s.vit||1) + (s.end||1) + (s.str||1) - 2}`;
+    const who = (CHARS[s.char] || CHARS.astarte).name;
+    $('contInfo').textContent = `${who}　${where}　レベル ${(s.vit||1) + (s.end||1) + (s.str||1) - 2}`;
   }
   $('newBtn').innerHTML = 'はじめから'; $('newBtn').classList.remove('warn');
   // 背景：城の入口を回るカメラ
+  camMode = 'title'; $('select').hidden = true;
   bossFight = false; droneOff(); timers = []; $('fade').classList.remove('on');
   unloadStage(); loadStage('castle');
 }
-function startGame(fromSave){
+function startGame(fromSave, charId){
   audioInit();
-  $('title').hidden = true; $('hud').hidden = false; running = true; paused = false; menu = null;
+  $('title').hidden = true; $('select').hidden = true; $('hud').hidden = false; running = true; paused = false; menu = null; camMode = 'play';
   const s = fromSave ? readSave() : null;
-  if (s){ applySave(s); } else resetProgress();
+  if (s){ applySave(s); } else resetProgress(charId);
   const loc = G.loc;
   if (loc && STAGES[loc.stage]) enterStage(loc.stage, loc.bonfire); else enterStage('nexus');
   soulShown = P.souls;
@@ -383,8 +399,39 @@ function startGame(fromSave){
 $('contBtn').addEventListener('click', () => startGame(true));
 $('newBtn').addEventListener('click', () => {
   if (readSave() && !confirmNew){ confirmNew = true; $('newBtn').innerHTML = 'はじめから<small>もう一度押すと、今のセーブを消して始めます</small>'; $('newBtn').classList.add('warn'); return; }
-  $('newBtn').classList.remove('warn'); store.del(SAVE_KEY); startGame(false);
+  $('newBtn').classList.remove('warn'); showSelect();
 });
+
+// ---------- 旅人選択 ----------
+function showSelect(){
+  audioInit();
+  $('title').hidden = true; $('select').hidden = false; camMode = 'select';
+  unloadStage(); loadStage('nexus'); P.H.root.visible = false;
+  ['astarte', 'umine'].forEach((id, i) => {
+    const H = CHARS[id].build(); H.root.position.set(i ? 1.3 : -1.3, 0, 4); H.root.rotation.y = i ? -.18 : .18; add(H.root);
+    resetPoseFor(H); previews[id] = H;
+  });
+  camera.position.set(-.7, 1.55, 8.4);
+  pickChar('astarte');
+}
+function resetPoseFor(H){ H.rig.position.y = .75; locoPose(H, 0, 0, false, 1, false); }
+function pickChar(id){
+  selChar = id;
+  $('cardAstarte').classList.toggle('on', id === 'astarte'); $('cardUmine').classList.toggle('on', id === 'umine');
+}
+function animatePreviews(dt, t){
+  for (const id in previews){
+    const H = previews[id], on = id === selChar;
+    if (on) applyPose(H, id === 'umine' ? { aR: [-1.3, 0, -.15], aL: [-.6, 0, .3], tor: [0, 0, 0] } : { aR: [-1.0, 0, -.6], aL: [-.3, 0, .2], tor: [.05, -.2, 0] }, Math.min(1, dt*6));
+    else applyPose(H, { aR: REST.aR, aL: REST.aL, tor: [0, 0, 0] }, Math.min(1, dt*6));
+    H.rig.position.y = .75 + Math.sin(t*1.8 + (id === 'umine' ? 1 : 0))*.015;
+    if (H.anim) H.anim(dt, t, 0);
+  }
+}
+$('cardAstarte').addEventListener('click', () => pickChar('astarte'));
+$('cardUmine').addEventListener('click', () => pickChar('umine'));
+$('selBack').addEventListener('click', () => { for (const k in previews) delete previews[k]; P.H.root.visible = true; showTitle(); });
+$('selGo').addEventListener('click', () => { for (const k in previews) delete previews[k]; store.del(SAVE_KEY); startGame(false, selChar); });
 
 recompute();
 showTitle();
