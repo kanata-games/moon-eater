@@ -31,6 +31,7 @@ function splash(pos){ burst(pos, 'water', 10, 3.5, 9, .45); sfx.splash(); }
 
 function updateMagic(dt){
   if (!dt) return;
+  updateEnemyShots(dt);
   for (let i = bolts.length - 1; i >= 0; i--){
     const b = bolts[i]; b.life -= dt;
     if (b.target && !b.target.dead){
@@ -77,7 +78,52 @@ function updateMagic(dt){
     }
   }
 }
+// ---------- 敵の飛び道具（矢・呪いの玉） ----------
+const eshots = [];
+const arrowGeo = new THREE.BoxGeometry(.05, .05, .7), orbGeo = new THREE.IcosahedronGeometry(.22, 0);
+sfx.arrow = () => { nz(.18, 2600, 3, .15, 'bandpass', 1200); tn(300, .08, 'square', .04, 200); };
+sfx.curse = () => { tn(220, .5, 'sawtooth', .07, 110); nz(.4, 900, 2, .12, 'bandpass', 400); };
+function fireShots(e, A){
+  const n = (e.phase2 && A.count2) || A.count || 1;
+  e.H.tip.getWorldPosition(_v); const from = _v.clone(); from.y = Math.max(1.0, from.y);
+  const ty = 1.2;
+  for (let i = 0; i < n; i++){
+    const ang = e.face + (i - (n - 1)/2)*(A.spread || 0);
+    const mat = new THREE.MeshBasicMaterial({ color: A.color || 0xffffff, fog: false });
+    const m = new THREE.Mesh(A.arrow ? arrowGeo : orbGeo, mat); m.position.copy(from);
+    if (!A.arrow){ const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.moonGlow, color: A.color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); glow.scale.setScalar(1.1); m.add(glow); }
+    scene.add(m);
+    const flat = Math.max(1, Math.hypot(P.pos.x - from.x, P.pos.z - from.z));
+    const v = new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang)).multiplyScalar(A.speed);
+    v.y = clamp((ty - from.y)/flat*A.speed, -A.speed*.5, A.speed*.5);
+    eshots.push({ m, v, life: A.life || 2.2, dmg: A.dmg*(e.phase2 ? 1.1 : 1), homing: A.homing || 0, A, arrow: !!A.arrow, dodged: false });
+  }
+  A.arrow ? sfx.arrow() : sfx.curse();
+}
+function removeShot(i){ const s = eshots[i]; scene.remove(s.m); s.m.material.dispose(); if (s.m.children[0]) s.m.children[0].material.dispose(); eshots.splice(i, 1); }
+function updateEnemyShots(dt){
+  for (let i = eshots.length - 1; i >= 0; i--){
+    const s = eshots[i]; s.life -= dt;
+    if (s.homing && P.state !== 'dead' && !s.dodged){
+      _v.set(P.pos.x, 1.2, P.pos.z).sub(s.m.position).normalize().multiplyScalar(s.v.length());
+      s.v.lerp(_v, Math.min(1, dt*s.homing));
+    }
+    s.m.position.addScaledVector(s.v, dt);
+    if (s.arrow){ _v.copy(s.m.position).add(s.v); s.m.lookAt(_v); } else { s.m.rotation.x += dt*5; s.m.rotation.y += dt*4; if (Math.random() < dt*30) burst(s.m.position, 'purple', 1, .3, -1, .4, .8); }
+    if (s.life <= 0 || s.m.position.y < .05 || insideAny(s.m.position, 0)){ burst(s.m.position, s.arrow ? 'dust' : 'purple', 6, 2.5, 6, .35); removeShot(i); continue; }
+    if (!s.dodged && P.state !== 'dead'){
+      const d = Math.hypot(P.pos.x - s.m.position.x, P.pos.z - s.m.position.z), dy = s.m.position.y - 1.1;
+      if (d < .5 && Math.abs(dy) < 1.0){
+        const r = hurtPlayer(s.dmg, s.m.position, s.A);
+        if (r === 'dodge'){ s.dodged = true; continue; }
+        if (r !== 'none'){ removeShot(i); continue; }
+      }
+    }
+  }
+}
+
 function clearMagic(){
+  while (eshots.length) removeShot(eshots.length - 1);
   bolts.forEach(b => { scene.remove(b.m); b.m.children[0].material.dispose(); }); bolts.length = 0;
   geysers.forEach(g => { if (g.col){ scene.remove(g.col); g.col.geometry.dispose(); g.col.material.dispose(); } }); geysers.length = 0;
 }

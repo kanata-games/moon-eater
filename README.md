@@ -33,6 +33,7 @@ js/
 stages/
   nexus.js        拠点「月影の祭壇」（要石の一覧 ARCHSTONES もここ）
   castle.js       ステージ1「月喰いの城」
+  catacomb.js     ステージ2「沈んだ地下墓所」（天井・灯り・近道の格子扉）
 ```
 
 ## ステージの足し方

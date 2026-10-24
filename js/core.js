@@ -38,7 +38,9 @@ function resize(){
 }
 addEventListener('resize', resize); resize();
 
-scene.add(new THREE.HemisphereLight(0x6a78a8, 0x1c1612, 0.62));
+const hemiLight = new THREE.HemisphereLight(0x6a78a8, 0x1c1612, 0.62); scene.add(hemiLight);
+// 暗いステージで主人公が持つ灯り
+const lanternLight = new THREE.PointLight(0xffd6a0, 0, 12, 1.5); scene.add(lanternLight);
 const moonLight = new THREE.DirectionalLight(0xb9c4ff, 0.72); moonLight.position.set(-30, 50, 25); scene.add(moonLight);
 
 // 初代PS風：頂点を画面のピクセルに吸着させてカクつかせる

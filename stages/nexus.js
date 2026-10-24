@@ -6,7 +6,7 @@
 // =========================================================
 const ARCHSTONES = [
   { stage: 'castle', x: -6, z: -9 },
-  { stage: null, name: '沈んだ地下墓所', x: 0, z: -11 },
+  { stage: 'catacomb', x: 0, z: -11 },
   { stage: null, name: '灰の塔', x: 6, z: -9 }
 ];
 

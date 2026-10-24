@@ -81,6 +81,96 @@ function rune(x, z, text){
   m.rotation.x = -Math.PI/2; m.position.set(x, .04, z); add(m); runes.push({ x, z, text, m });
 }
 
+// 天井（地下ステージ用）。カメラはこの高さより上に行かない
+function ceiling(x, z, w, d, y, color = 0x6a6e78){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d, 16, 32), lam(color, ownTex(TEX.stone, w/3, d/3)));
+  m.rotation.x = Math.PI/2; m.position.set(x, y, z); add(m);
+}
+// 火の灯った台（周りを照らす）
+function brazier(x, z){
+  const st = new THREE.Mesh(new THREE.CylinderGeometry(.35, .25, .9, 6), lam(0x3a3430)); st.position.set(x, .45, z); add(st);
+  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(.5, .32, .25, 7), lam(0x4a4038)); bowl.position.set(x, 1.0, z); add(bowl);
+  makeFlame(x, 1.05, z, .9, true);
+  colliders.push({ x1: x - .45, z1: z - .45, x2: x + .45, z2: z + .45, h: 1.2 });
+}
+// 棺（当たり判定つき）
+function coffin(x, z, alongX){
+  const w = alongX ? 2 : .9, d = alongX ? .9 : 2;
+  block(x - w/2, z - d/2, x + w/2, z + d/2, .6, { color: 0x6a5a4c });
+  block(x - w/2 + .05, z - d/2 + .05, x + w/2 - .05, z + d/2 - .05, .12, { color: 0x50443a, y0: .6, collide: false });
+}
+// 骨の山（飾り）
+function bones(x, z, n = 8, seed = 1){
+  const r = mulberry32(seed), mat = lam(0xd8d0bc);
+  for (let i = 0; i < n; i++){
+    const m = boxMesh(.08 + r()*.1, .08, .35 + r()*.3, mat); m.position.set(x + (r() - .5)*1.6, .05 + r()*.25, z + (r() - .5)*1.6); m.rotation.set(r(), r()*3, r()); add(m);
+  }
+  const skull = boxMesh(.22, .2, .24, mat); skull.position.set(x, .12, z); skull.rotation.y = r()*3; add(skull);
+}
+// 床の水たまり（飾り）
+function pool(x1, z1, x2, z2){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(x2 - x1, z2 - z1), new THREE.MeshLambertMaterial({ color: 0x1c3a3a, emissive: 0x0a1c20, transparent: true, opacity: .8 }));
+  m.rotation.x = -Math.PI/2; m.position.set((x1 + x2)/2, .03, (z1 + z2)/2); add(m);
+  spinners.push({ obj: m, water: true, seed: Math.random()*6 });
+}
+
+// ---------- 拾える魂（一度取ったら消える） ----------
+function soulPickup(id, x, z, souls){
+  const taken = (G.taken[stage.id] || []).includes(id); if (taken) return;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.soul, color: 0xfff2c8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  s.position.set(x, .5, z); s.scale.setScalar(.8); add(s); spinners.push({ obj: s, glow: true, seed: Math.random()*6 });
+  const it = {
+    near: p => Math.hypot(p.x - x, p.z - z) < 1.4,
+    prompt: () => ({ text: '拾う' }),
+    use: () => {
+      addSouls(souls); sfx.soul(); s.visible = false;
+      if (!G.taken[stage.id]) G.taken[stage.id] = []; G.taken[stage.id].push(id);
+      interactables.splice(interactables.indexOf(it), 1);
+      banner(`魂の残滓を手に入れた`, 'soft', 1.8, `魂 +${souls}`); save();
+    }
+  };
+  interactables.push(it);
+}
+
+// ---------- 近道の格子扉（裏側のレバーで開く。開けたら保存される） ----------
+// def: { id, x1, z1, x2, z2, lever:{x,z}, back:(p)=>レバー側にいるか }
+function shortcutGate(def){
+  const opened = (G.opened[stage.id] || []).includes(def.id);
+  const g = new THREE.Group(); add(g);
+  const w = def.x2 - def.x1, d = def.z2 - def.z1, alongZ = d > w, len = Math.max(w, d), mBar = lam(0x4a4a52);
+  for (let i = 0; i <= Math.floor(len/.35); i++){
+    const t = -len/2 + i*.35, bar = boxMesh(.07, 4.2, .07, mBar);
+    bar.position.set((def.x1 + def.x2)/2 + (alongZ ? 0 : t), 2.1, (def.z1 + def.z2)/2 + (alongZ ? t : 0)); g.add(bar);
+  }
+  [1, 2.3, 3.6].forEach(y => { const b = boxMesh(alongZ ? .08 : len, .08, alongZ ? len : .08, mBar); b.position.set((def.x1 + def.x2)/2, y, (def.z1 + def.z2)/2); g.add(b); });
+  const col = { x1: def.x1, z1: def.z1, x2: def.x2, z2: def.z2, h: 5, off: opened };
+  colliders.push(col);
+  if (opened){ g.position.y = 3.9; }
+  // レバー
+  const lv = new THREE.Group(); lv.position.set(def.lever.x, 1.1, def.lever.z); add(lv);
+  const base = boxMesh(.3, .4, .15, lam(0x3a3a40)); lv.add(base);
+  const arm = new THREE.Group(); lv.add(arm); const stick = boxMesh(.06, .5, .06, lam(0x6a5a40)); stick.position.y = .25; arm.add(stick);
+  arm.rotation.x = opened ? -1.0 : .9;
+  const gateObj = { g, col, opening: false, t: 0 };
+  interactables.push({
+    near: p => !col.off && def.back(p) && Math.hypot(p.x - def.lever.x, p.z - def.lever.z) < 1.6,
+    prompt: () => ({ text: 'レバーを引く' }),
+    use: () => {
+      if (col.off) return;
+      col.off = true; arm.rotation.x = -1.0; sfx.gate(); sfx.slam(); shake = Math.max(shake, .15);
+      if (!G.opened[stage.id]) G.opened[stage.id] = []; G.opened[stage.id].push(def.id);
+      spinners.push({ obj: g, lift: true, t: 0 });
+      banner('近道が開いた', 'soft', 2.0, ''); save();
+    }
+  });
+  interactables.push({
+    near: p => !col.off && !def.back(p) && p.x > def.x1 - 1.6 && p.x < def.x2 + 1.6 && p.z > def.z1 - 1.6 && p.z < def.z2 + 1.6,
+    prompt: () => ({ text: '格子は固く閉ざされている。向こう側から開くようだ', dim: true }),
+    use: () => {}
+  });
+  return gateObj;
+}
+
 // ---------- 篝火 ----------
 function makeBonfire(def, lit){
   const { x, z } = def;
@@ -142,6 +232,7 @@ function loadStage(id){
   const def = STAGES[id]; stage = def;
   stageGroup = new THREE.Group(); scene.add(stageGroup);
   wr = mulberry32(def.seed || 1);
+  hemiLight.intensity = def.hemi ?? .62; moonLight.intensity = def.moon ?? .72; moonSprite.visible = !def.roof;
   def._fog = new THREE.Color(def.fog); def._bossFog = new THREE.Color(def.bossFog || def.fog);
   scene.fog.color.copy(def._fog); scene.fog.near = def.fogNear || 7; scene.fog.far = def.fogFar || 46; scene.background.copy(def._fog);
   def.build();

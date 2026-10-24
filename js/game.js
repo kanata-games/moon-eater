@@ -6,22 +6,22 @@ let running = false, paused = false, menu = null, simTime = 0, hitStop = 0, shak
 let bossFight = false, timers = [];
 let camYaw = Math.PI, camPitch = .28;
 // G = 保存される進行状況
-const G = { lit: {}, bosses: {}, stain: null, loc: null };
+const G = { lit: {}, bosses: {}, stain: null, loc: null, taken: {}, opened: {} };
 function later(sec, fn){ timers.push({ t: simTime + sec, fn }); }
 
 // ---------- セーブ ----------
 const SAVE_KEY = 'save1';
 function save(){
-  store.set(SAVE_KEY, { v: 1, char: P.char, vit: P.vit, end: P.end, str: P.str, souls: P.souls, lit: G.lit, bosses: G.bosses, stain: G.stain, loc: G.loc, bonfire: P.bonfire, at: Date.now() });
+  store.set(SAVE_KEY, { v: 1, char: P.char, vit: P.vit, end: P.end, str: P.str, souls: P.souls, lit: G.lit, bosses: G.bosses, taken: G.taken, opened: G.opened, stain: G.stain, loc: G.loc, bonfire: P.bonfire, at: Date.now() });
 }
 function readSave(){ const s = store.get(SAVE_KEY, null); return s && s.v === 1 ? s : null; }
 function applySave(s){
   setCharacter(s.char || 'astarte');
   P.vit = s.vit || 1; P.end = s.end || 1; P.str = s.str || 1; P.souls = s.souls || 0;
-  G.lit = s.lit || {}; G.bosses = s.bosses || {}; G.stain = s.stain || null; G.loc = s.loc || null; P.bonfire = s.bonfire || null;
+  G.lit = s.lit || {}; G.bosses = s.bosses || {}; G.taken = s.taken || {}; G.opened = s.opened || {}; G.stain = s.stain || null; G.loc = s.loc || null; P.bonfire = s.bonfire || null;
   recompute();
 }
-function resetProgress(id){ setCharacter(id); P.vit = P.end = P.str = 1; P.souls = 0; G.lit = {}; G.bosses = {}; G.stain = null; G.loc = null; P.bonfire = null; recompute(); }
+function resetProgress(id){ setCharacter(id); P.vit = P.end = P.str = 1; P.souls = 0; G.lit = {}; G.bosses = {}; G.taken = {}; G.opened = {}; G.stain = null; G.loc = null; P.bonfire = null; recompute(); }
 
 // ---------- ステージの出入り ----------
 function enterStage(id, bonfireId){
@@ -65,6 +65,7 @@ function startBossFight(){
 }
 function bossKilled(){
   G.bosses[stage.id] = true; bossFight = false; droneOff(); openGate(); save();
+  enemies.forEach(e => { if (e.summoned && !e.dead) e.die(); }); // 呼ばれた手下も消える
   setTimeout(() => { $('boss').hidden = true; }, 1500);
   later(1.2, () => { banner('宿敵撃破', 'victory', 3.4, `${boss ? boss.T.name : ''}を討ち果たした`); sfx.victory(); });
   later(5.2, () => { spawnReturnStone(true); banner('帰還の要石が現れた', 'soft', 2.6, '祭壇へ戻り、魂を捧げよ'); });
@@ -302,6 +303,7 @@ function updateCamera(dt){
     const f = i/steps*dist; probe.set(pivot.x - dx*f, Math.max(.35, pivot.y - dy*f), pivot.z - dz*f);
     if (insideAny(probe, .25)) break; lx = probe.x; ly = probe.y; lz = probe.z;
   }
+  if (stage && stage.roof) ly = Math.min(ly, stage.roof - .45);
   camera.position.set(lx, ly, lz);
   if (shake > 0){ camera.position.x += (Math.random() - .5)*shake*.6; camera.position.y += (Math.random() - .5)*shake*.6; shake = Math.max(0, shake - dt*1.6); }
   camera.lookAt(pivot.x, pivot.y, pivot.z);
@@ -336,6 +338,8 @@ function step(dt){
   areaName();
   const targetFog = bossFight ? stage._bossFog : stage._fog;
   scene.fog.color.lerp(targetFog, Math.min(1, dt*.8)); scene.background.copy(scene.fog.color);
+  const fn = bossFight && stage.bossFogNear ? stage.bossFogNear : (stage.fogNear || 7), ff = bossFight && stage.bossFogFar ? stage.bossFogFar : (stage.fogFar || 46);
+  scene.fog.near += (fn - scene.fog.near)*Math.min(1, dt); scene.fog.far += (ff - scene.fog.far)*Math.min(1, dt);
   moonSprite.material.color.lerp(boss && boss.phase2 && bossFight ? _c.set(0xff8a8a) : _c.set(0xffffff), Math.min(1, dt));
 }
 function animateWorld(dt, now){
@@ -346,7 +350,13 @@ function animateWorld(dt, now){
   }
   if (gate) gate.g.children.forEach((p, i) => { p.material.map.offset.y = (now*.07*(i + 1)) % 1; p.material.map.offset.x = Math.sin(now*.3 + i)*.2; p.material.opacity = .5 + Math.sin(now*1.3 + i)*.12; });
   runes.forEach((r, i) => { r.m.material.opacity = .65 + Math.sin(now*2 + i)*.25; });
-  for (const s of spinners){
+  lanternLight.intensity = running && stage && stage.lantern ? stage.lantern : 0;
+  lanternLight.position.set(P.pos.x, 2.4, P.pos.z);
+  for (let i = spinners.length - 1; i >= 0; i--){
+    const s = spinners[i];
+    if (s.lift){ s.t += dt; s.obj.position.y = Math.min(3.9, s.t*2.6); if (s.t > 1.6) spinners.splice(i, 1); continue; }
+    if (s.water){ s.obj.material.opacity = .72 + Math.sin(now*1.3 + s.seed)*.08; continue; }
+    if (s.glow){ s.obj.scale.setScalar(.7 + Math.sin(now*3 + s.seed)*.12); s.obj.position.y = .5 + Math.sin(now*2 + s.seed)*.08; continue; }
     if (s.pulse){ s.obj.material.opacity = .35 + Math.sin(now*1.6 + s.seed)*.15; continue; }
     s.obj.rotation.y += s.rot*dt; s.obj.rotation.x += s.rot*.5*dt; s.obj.position.y = s.y0 + Math.sin(now*s.bob + s.seed)*.5;
   }

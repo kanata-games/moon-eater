@@ -26,6 +26,8 @@ function humanoid(o){
   if (o.weapon === 'sword'){ add(wpn, .05, .2, .05, mWood, 0, 0, 0); add(wpn, .07, .05, .3, mT, 0, -.1, 0); add(wpn, .05, .95, .12, mMetal, 0, -.6, 0); tipY = -1.08; }
   if (o.weapon === 'spear'){ add(wpn, .05, 2.2, .05, mWood, 0, -.55, 0); add(wpn, .04, .34, .1, mMetal, 0, -1.8, 0); tipY = -1.95; }
   if (o.weapon === 'axe'){ add(wpn, .07, 1.5, .07, mWood, 0, -.55, 0); add(wpn, .06, .46, .52, mMetal, 0, -1.15, .2); tipY = -1.3; }
+  if (o.weapon === 'bow'){ add(wpn, .06, .7, .06, mWood, 0, -.3, 0); add(wpn, .7, .05, .05, mWood, 0, -.6, 0); add(wpn, .02, .02, .5, lam(0xd8d0b8), 0, -.62, .02); tipY = -.68; }
+  if (o.weapon === 'scythe'){ add(wpn, .06, 2.5, .06, mWood, 0, -.9, 0); add(wpn, .05, .14, .95, lam(0x9a9cb8), 0, -2.05, .42); add(wpn, .04, .1, .3, lam(0x9a9cb8), 0, -1.95, .95); tipY = -2.1; }
   if (o.weapon === 'great'){ add(wpn, .07, .3, .07, mWood, 0, 0, 0); add(wpn, .1, .07, .52, mT, 0, -.15, 0); add(wpn, .07, 1.75, .25, lam(0x8e94ab), 0, -1.05, 0); tipY = -1.9; }
   const tip = new THREE.Object3D(); tip.position.y = tipY; wpn.add(tip);
   let shieldPivot = null;
@@ -42,7 +44,9 @@ const KF = {
   side2:  { wind: { aR: [-1.45, 0, -.25], tor: [0, 1.05, 0] }, act: { aR: [-1.45, 0, -.9], tor: [.1, -1.2, 0] } },
   thrust: { wind: { aR: [-1.25, 0, -.2], tor: [0, -.8, 0] },  act: { aR: [-1.65, 0, 0], tor: [.15, .4, 0] } },
   slam:   { wind: { aR: [-3.0, 0, .1], aL: [-3.0, 0, -.1], tor: [-.32, 0, 0] }, act: { aR: [-.4, 0, 0], aL: [-.4, 0, 0], tor: [.5, 0, 0] } },
-  heavy:  { wind: { aR: [-3.1, 0, .3], tor: [-.35, -.5, 0] }, act: { aR: [-.1, 0, 0], tor: [.5, .3, 0] } }
+  heavy:  { wind: { aR: [-3.1, 0, .3], tor: [-.35, -.5, 0] }, act: { aR: [-.1, 0, 0], tor: [.5, .3, 0] } },
+  shoot:  { wind: { aR: [-1.55, 0, 0], aL: [-1.5, 0, .35], tor: [0, .2, 0] }, act: { aR: [-1.45, 0, 0], aL: [-1.45, 0, .35], tor: [-.05, .2, 0] } },
+  cast:   { wind: { aR: [-2.7, 0, .3], aL: [-2.7, 0, -.3], tor: [-.25, 0, 0] }, act: { aR: [-1.5, 0, 0], aL: [-1.5, 0, 0], tor: [.2, 0, 0] } }
 };
 function attackPose(H, kind, stage, f){
   const k = KF[kind]; const g = (key, st) => st === 'rest' ? REST[key] : (k[st][key] || REST[key]);
