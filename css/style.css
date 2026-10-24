@@ -28,6 +28,8 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 .bar.hp b{background:#c9a868;opacity:.55}
 .bar.hp i{background:linear-gradient(#cf4040,#7a171d)}
 .bar.st i{background:linear-gradient(#78ad66,#3d6a33)}
+#buff{font-family:var(--f-disp);font-size:13px;color:#f0d890;text-shadow:0 1px 3px #000;letter-spacing:.1em}
+#buff b{font-weight:500;font-variant-numeric:tabular-nums}
 .bar.mp i{background:linear-gradient(#6aa8e8,#2c5594)}
 #flask{position:absolute;left:calc(20px + env(safe-area-inset-left,0px));bottom:calc(20px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);padding:8px 12px 8px 10px}
 .vial{width:16px;height:24px;position:relative}

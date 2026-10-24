@@ -10,13 +10,16 @@ sfx.splash = () => { nz(.22, 1200, .8, .3, 'bandpass', 300); };
 sfx.geyser = () => { nz(.9, 400, .5, .5, 'lowpass', 2400); tn(140, .6, 'sine', .3, 70); };
 
 // 水弾：まっすぐ飛ぶ。ロックオン中は少し追いかける
-function castBolt(){
-  const m = new THREE.Mesh(boltGeo, boltMat); P.H.tip.getWorldPosition(m.position); m.position.y = Math.max(1.0, m.position.y);
+const boltMats = {};
+function castBolt(color){
+  const mat = color ? (boltMats[color] || (boltMats[color] = new THREE.MeshBasicMaterial({ color, fog: false }))) : boltMat;
+  const m = new THREE.Mesh(boltGeo, mat); P.H.tip.getWorldPosition(m.position); m.position.y = Math.max(1.0, m.position.y);
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.moonGlow, color: 0x7fd0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  if (color) glow.material.color.setHex(color);
   glow.scale.setScalar(.9); m.add(glow); scene.add(m);
   const v = new THREE.Vector3(Math.sin(P.face), 0, Math.cos(P.face)).multiplyScalar(17);
   if (P.lock){ P.lock.chest(_v); v.y = clamp((_v.y - m.position.y) / Math.max(1, Math.hypot(_v.x - m.position.x, _v.z - m.position.z)) * 17, -6, 6); }
-  bolts.push({ m, v, life: 1.5, dmg: spellPow(), target: P.lock });
+  bolts.push({ m, v, life: 1.5, dmg: spellPow()*dmgMul(), target: P.lock, splashKind: color ? 'heal' : 'water' });
   sfx.bolt();
 }
 // 潮渦：狙った場所に水柱を噴き上げる（少し遅れて発動）
@@ -27,34 +30,80 @@ function castGeyser(){
   ring(x, z, 2.6, 0x8fd8ff);
   geysers.push({ x, z, r: 2.6, t: 0, delay: .35, fired: false, dmg: spellPow()*2.4, col: null });
 }
-function splash(pos){ burst(pos, 'water', 10, 3.5, 9, .45); sfx.splash(); }
+function splash(pos, kind = 'water'){ burst(pos, kind, 10, 3.5, 9, .45); sfx.splash(); }
+
+// ---------- アスターテ専用 ----------
+// 月輪：自分の周りに月の輪を広げる（錫杖の強攻撃）
+function castMoonRing(){
+  const x = P.pos.x, z = P.pos.z, r = 4.6;
+  ring(x, z, r, 0xfff0b8); sfx.levelUp(); shake = Math.max(shake, .15);
+  for (let k = 0; k < 3; k++){ _v.set(x, 1, z); burst(_v, 'heal', 14, 6, 1, .7, 1.2); }
+  for (const e of enemies){
+    if (e.dead || !e.active() || e.state === 'critted' || e.y > 2.5) continue;
+    if (Math.hypot(e.pos.x - x, e.pos.z - z) > r + e.T.radius*.5) continue;
+    e.hurt(spellPow()*2.1*dmgMul(), true, Math.atan2(x - e.pos.x, z - e.pos.z));
+    e.chest(_v); burst(_v, 'blood', 12, 4, 9, .55); sfx.hit(); hitStop = Math.max(hitStop, .06);
+  }
+}
+// 弩：矢を撃つ。強攻撃は貫通して重い
+function fireArrow(heavy){
+  const mat = new THREE.MeshBasicMaterial({ color: heavy ? 0xffe0a0 : 0xd8d0b8, fog: false });
+  const m = new THREE.Mesh(arrowGeo, mat); P.H.tip.getWorldPosition(m.position); m.position.y = Math.max(1.1, m.position.y);
+  scene.add(m);
+  const sp = heavy ? 34 : 28, v = new THREE.Vector3(Math.sin(P.face), 0, Math.cos(P.face)).multiplyScalar(sp);
+  if (P.lock){ P.lock.chest(_v); v.y = clamp((_v.y - m.position.y)/Math.max(1, Math.hypot(_v.x - m.position.x, _v.z - m.position.z))*sp, -8, 8); }
+  bolts.push({ m, v, life: 1.2, dmg: P.atk*(heavy ? 2.3 : 1.15)*dmgMul(), arrow: true, pierce: heavy, hitSet: new Set(), heavyHit: heavy, splashKind: 'dust' });
+  sfx.arrow(); if (heavy){ shake = Math.max(shake, .1); tn(180, .2, 'square', .08, 90); }
+}
+// 三味線の音撃：前方の扇形に音の衝撃（盾を崩す）
+function strumWave(){
+  const reach = 4.8, arc = 85*DEG;
+  tn(392, .5, 'triangle', .12, 392); tn(587, .45, 'triangle', .08, 587, .04); tn(196, .3, 'square', .05, 150);
+  for (let i = 0; i < 3; i++){ const d = 1.2 + i*1.4; ring(P.pos.x + Math.sin(P.face)*d, P.pos.z + Math.cos(P.face)*d, .9 + i*.5, 0x8fb0ff); }
+  for (const e of enemies){
+    if (e.dead || !e.active() || e.state === 'critted' || e.y > 2.5) continue;
+    const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z;
+    if (Math.hypot(dx, dz) - e.T.radius > reach || Math.abs(angDiff(P.face, Math.atan2(dx, dz))) > arc/2) continue;
+    e.hurt(P.atk*.95*dmgMul(), true, Math.atan2(-dx, -dz)); e.chest(_v); burst(_v, 'blue', 10, 4, 4, .5); hitStop = Math.max(hitStop, .05);
+  }
+}
+// 月見の調べ：少し回復し、しばらく攻撃が上がる
+function playSong(){
+  P.hp = Math.min(P.maxHp, P.hp + P.maxHp*.18); P.buffT = 25;
+  [523, 659, 784, 1046].forEach((f, i) => tn(f, .9, 'triangle', .07, f, i*.1));
+  _v.set(P.pos.x, 1.2, P.pos.z); burst(_v, 'heal', 26, 2.5, -2, 1.1); ring(P.pos.x, P.pos.z, 3, 0xfff0b8);
+  banner('月見の調べ', 'soft', 1.6, '攻撃が高まった');
+}
 
 function updateMagic(dt){
   if (!dt) return;
   updateEnemyShots(dt);
   for (let i = bolts.length - 1; i >= 0; i--){
     const b = bolts[i]; b.life -= dt;
-    if (b.target && !b.target.dead){
+    if (b.target && !b.target.dead && !b.arrow){
       b.target.chest(_v); _v.sub(b.m.position).normalize().multiplyScalar(17);
       b.v.lerp(_v, Math.min(1, dt*2.2));
     }
-    b.m.position.addScaledVector(b.v, dt); b.m.rotation.x += dt*9; b.m.rotation.y += dt*7;
-    if (Math.random() < dt*40) burst(b.m.position, 'water', 1, .3, 2, .3, .7);
+    b.m.position.addScaledVector(b.v, dt);
+    if (b.arrow){ _v.copy(b.m.position).add(b.v); b.m.lookAt(_v); }
+    else { b.m.rotation.x += dt*9; b.m.rotation.y += dt*7; if (Math.random() < dt*40) burst(b.m.position, b.splashKind || 'water', 1, .3, 2, .3, .7); }
     let hit = b.life <= 0 || b.m.position.y < .05;
     if (!hit && insideAny(b.m.position, 0)) hit = true;
     if (!hit){
       for (const e of enemies){
-        if (e.dead || !e.active() || e.state === 'critted') continue;
+        if (e.dead || !e.active() || e.state === 'critted' || (b.hitSet && b.hitSet.has(e))) continue;
         const dx = e.pos.x - b.m.position.x, dz = e.pos.z - b.m.position.z;
         if (Math.hypot(dx, dz) > e.T.radius + .3) continue;
         if (b.m.position.y < e.y || b.m.position.y > e.y + 2.1*e.T.scale) continue;
-        const r = e.hurt(b.dmg, false, Math.atan2(-b.v.x, -b.v.z));
+        const r = e.hurt(b.dmg, !!b.heavyHit, Math.atan2(-b.v.x, -b.v.z));
         e.chest(_v); burst(_v, r === 'blocked' ? 'spark' : 'blood', r === 'blocked' ? 6 : 8, 3, 9, .45);
         if (r !== 'blocked') sfx.hit();
-        hitStop = Math.max(hitStop, .03); hit = true; break;
+        hitStop = Math.max(hitStop, .03);
+        if (b.pierce && r !== 'blocked'){ b.hitSet.add(e); continue; }
+        hit = true; break;
       }
     }
-    if (hit){ splash(b.m.position); scene.remove(b.m); b.m.children[0].material.dispose(); bolts.splice(i, 1); }
+    if (hit){ splash(b.m.position, b.splashKind); removeBolt(i); }
   }
   for (let i = geysers.length - 1; i >= 0; i--){
     const g = geysers[i]; g.t += dt;
@@ -122,8 +171,9 @@ function updateEnemyShots(dt){
   }
 }
 
+function removeBolt(i){ const b = bolts[i]; scene.remove(b.m); if (b.arrow) b.m.material.dispose(); if (b.m.children[0]) b.m.children[0].material.dispose(); bolts.splice(i, 1); }
 function clearMagic(){
   while (eshots.length) removeShot(eshots.length - 1);
-  bolts.forEach(b => { scene.remove(b.m); b.m.children[0].material.dispose(); }); bolts.length = 0;
+  while (bolts.length) removeBolt(bolts.length - 1);
   geysers.forEach(g => { if (g.col){ scene.remove(g.col); g.col.geometry.dispose(); g.col.material.dispose(); } }); geysers.length = 0;
 }

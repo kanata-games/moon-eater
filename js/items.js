@@ -24,6 +24,17 @@ const ITEMS = {
     spd: .9, mult: .55, heavy: 1.1, reach: 2.0, arc: 70, cost: .8, kinds: ['thrust', 'side'], heavyKind: 'over', crit: 1, catalyst: true, spell: 1 },
   bishopStaff: { slot: 'r', name: '司教の杖', kind: '杖', desc: '骸の司教が遺した紫の杖。魔法がより強く響く。',
     spd: .95, mult: .6, heavy: 1.2, reach: 2.1, arc: 70, cost: .8, kinds: ['thrust', 'side'], heavyKind: 'over', crit: 1, catalyst: true, spell: 1.3 },
+  // ---- アスターテ専用（only:'astarte'）----
+  scythe: { slot: 'r', only: 'astarte', name: '星詠みの大鎌', kind: '大鎌', desc: '星と月の紋を刻んだアスターテの大鎌。長い間合いで大きく薙ぎ払い、強攻撃はその場で一回転して周りを刈る。',
+    spd: 1.12, mult: 1.35, heavy: 2.3, reach: 3.3, arc: 160, heavyArc: 360, cost: 1.15, kinds: ['side', 'side2'], heavyKind: 'side', crit: 1.1 },
+  moonStaff: { slot: 'r', only: 'astarte', name: '三日月の錫杖', kind: '錫杖', desc: '三日月と鈴を戴くアスターテの錫杖。弱攻撃で月光弾を放ち、強攻撃で周りに月の輪を広げる。',
+    spd: .95, mult: .6, heavy: 1.2, reach: 2.2, arc: 70, cost: .8, kinds: ['thrust', 'side'], heavyKind: 'over', crit: 1, catalyst: true, spell: 1, spellFx: 'moon' },
+  crossbow: { slot: 'r', only: 'astarte', name: '機巧の弩', kind: '弩', desc: '歯車仕掛けの弩。弱攻撃で素早く撃ち、強攻撃で引き絞った矢が敵を貫く。近づかれると弱い。',
+    spd: 1, mult: .5, heavy: 1, reach: 1.8, arc: 70, cost: 1, kinds: ['over', 'side'], heavyKind: 'over', crit: 1, mode: 'bow' },
+  shamisen: { slot: 'r', only: 'astarte', name: '月猫の三味線', kind: '楽器', desc: '月と猫をあしらった三味線。弱攻撃は前方へ音の衝撃を放って崩し、強攻撃の調べで傷を癒やし、しばらく力を高める。',
+    spd: 1, mult: .5, heavy: 1, reach: 1.8, arc: 70, cost: 1, kinds: ['over', 'side'], heavyKind: 'over', crit: 1, mode: 'music' },
+  rapier: { slot: 'r', only: 'astarte', name: '星の刺剣', kind: '刺剣', desc: '星をかたどった鍔の細い剣。速い突きで刺し、盾がなくてもパリィを合わせやすい。致命の一撃が深い。',
+    spd: .8, mult: .78, heavy: 1.5, reach: 2.6, arc: 30, cost: .75, kinds: ['thrust', 'thrust'], heavyKind: 'thrust', crit: 1.8, lunge: 2.6, parry: [.04, .32] },
   // ---- 盾 ----
   none: { slot: 'l', name: 'なし', kind: '素手', desc: '盾を持たない。ガードは武器で受け、パリィも武器で弾く。' },
   buckler: { slot: 'l', name: '木の小盾', kind: '小盾', desc: '軽い木の盾。守りは薄いが、パリィを合わせやすい。', drain: 1.0, chipMul: 1, parry: [.04, .3] },
@@ -74,6 +85,63 @@ const WVIS = {
     g.userData.spin = c; return -1.55;
   }
 };
+// アスターテ専用武器の見た目
+Object.assign(WVIS, {
+  scythe(g, box, M){
+    box(g, .055, 2.5, .055, M(0x1c1a26), 0, -.75, 0);                                   // 柄
+    box(g, .08, .09, .08, M(0xc9a24c), 0, .5, 0); box(g, .08, .12, .08, M(0xc9a24c), 0, -1.9, 0);
+    // 三日月形の大きな刃（柄の先から前へ張り出し、手元側へ反る）
+    const sh = new THREE.Shape();
+    sh.absarc(0, 1.15, 1.15, -Math.PI/2, Math.PI*.2, false);
+    sh.absarc(.24, 1.28, .98, Math.PI*.2, -Math.PI/2 + .12, true);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: .035, bevelEnabled: false, curveSegments: 10 });
+    const blade = new THREE.Mesh(geo, M(0xe4e8f2)); blade.rotation.y = -Math.PI/2; blade.position.set(-.018, -2.25, 0); g.add(blade);
+    const back = new THREE.Mesh(new THREE.ExtrudeGeometry((() => { const b = new THREE.Shape(); b.absarc(.24, 1.28, .98, -Math.PI/2 + .12, Math.PI*.2, false); b.absarc(.3, 1.34, .9, Math.PI*.2, -Math.PI/2 + .2, true); return b; })(), { depth: .05, bevelEnabled: false, curveSegments: 10 }), M(0x1f2654));
+    back.rotation.y = -Math.PI/2; back.position.set(-.025, -2.25, 0); g.add(back);
+    // 月と星の飾り
+    const moon = new THREE.Mesh(new THREE.TorusGeometry(.13, .028, 4, 10, Math.PI*1.5), M(0xc9a24c)); moon.position.set(0, -2.12, .18); moon.rotation.y = Math.PI/2; g.add(moon);
+    const moon2 = new THREE.Mesh(new THREE.TorusGeometry(.09, .022, 4, 10, Math.PI*1.5), M(0xc9a24c)); moon2.position.set(0, -1.75, .55); moon2.rotation.y = Math.PI/2; g.add(moon2);
+    const star = new THREE.Mesh(new THREE.OctahedronGeometry(.08), new THREE.MeshBasicMaterial({ color: 0x6f8cff, fog: false })); star.position.set(0, -1.95, -.16); star.scale.y = 1.6; g.add(star);
+    box(g, .05, .26, .05, M(0x24285a), 0, -1.72, -.1); box(g, .05, .2, .05, M(0x24285a), 0, -1.6, .08);   // 房
+    box(g, .03, .25, .03, M(0xc9a24c), 0, .7, 0);                                       // 石突
+    g.userData.spin = star; return -2.3;
+  },
+  moonStaff(g, box, M){
+    box(g, .045, 2.0, .045, M(0x18181f), 0, -.6, 0); box(g, .07, .2, .07, M(0xc9a24c), 0, -1.6, 0);
+    const moon = new THREE.Mesh(new THREE.TorusGeometry(.2, .035, 4, 14, Math.PI*1.55), M(0xd8b468)); moon.position.y = -1.92; moon.rotation.set(0, Math.PI/2, Math.PI*.72); g.add(moon);
+    box(g, .03, .26, .03, M(0xd8b468), 0, -1.86, 0);
+    [-.13, -.05, .05, .13].forEach((z, i) => box(g, .035, .2 + (i % 2)*.06, .035, M(0xc9a24c), 0, -1.6 + .13 + (i % 2)*.03, z)); // 鈴の管
+    return -2.1;
+  },
+  crossbow(g, box, M){
+    box(g, .08, .75, .1, M(0x4a2a24), 0, -.3, 0);                                       // 台
+    box(g, .9, .05, .06, M(0x3a3a40), 0, -.62, 0);                                       // 弓
+    [-1, 1].forEach(s => { const w = new THREE.Mesh(new THREE.TorusGeometry(.08, .02, 4, 8), M(0xb08a4a)); w.position.set(s*.38, -.62, 0); w.rotation.y = Math.PI/2; g.add(w); });
+    const gear = new THREE.Mesh(new THREE.TorusGeometry(.09, .025, 4, 8), M(0xb08a4a)); gear.position.set(0, -.15, .06); g.add(gear);
+    box(g, .02, .02, .5, M(0xd8d0b8), 0, -.66, .12);                                    // 弦
+    box(g, .03, .55, .03, M(0x9a9aa4), 0, -.55, .05);                                   // 矢
+    return -.85;
+  },
+  shamisen(g, box, M){
+    box(g, .05, 1.0, .06, M(0x14141c), 0, -.45, 0);                                      // 棹
+    box(g, .08, .16, .1, M(0x14141c), 0, .12, 0);                                        // 天神
+    [-1, 1].forEach(s => { const e = new THREE.Mesh(new THREE.ConeGeometry(.04, .08, 4), M(0x14141c)); e.position.set(s*.04, .23, 0); g.add(e); });
+    [-.1, .1].forEach(x => box(g, .2, .03, .03, M(0x20202a), x, .02, 0));                 // 糸巻き
+    box(g, .36, .36, .12, M(0x1a2050), 0, -1.08, 0);                                     // 胴
+    const face = new THREE.Mesh(new THREE.CircleGeometry(.1, 10), new THREE.MeshBasicMaterial({ color: 0xe8ecff, fog: false })); face.position.set(0, -1.06, .062); g.add(face);
+    [-1, 1].forEach(s => { const e = new THREE.Mesh(new THREE.ConeGeometry(.05, .09, 4), M(0x14141c)); e.position.set(s*.15, -.86, 0); g.add(e); });
+    [-.03, .03].forEach(x => { const b = new THREE.Mesh(new THREE.SphereGeometry(.04, 6, 4), M(0x4a62c8)); b.position.set(x + .1, -.12, .06); g.add(b); }); // 鈴
+    return -1.2;
+  },
+  rapier(g, box, M){
+    box(g, .045, .2, .045, M(0x2a2240), 0, 0, 0);
+    const r1 = new THREE.Mesh(new THREE.TorusGeometry(.09, .012, 4, 10), M(0xd8dce8)); r1.position.y = -.12; g.add(r1);
+    const r2 = new THREE.Mesh(new THREE.TorusGeometry(.09, .012, 4, 10), M(0xd8dce8)); r2.position.y = -.12; r2.rotation.y = Math.PI/2; g.add(r2);
+    box(g, .025, 1.25, .03, M(0xe4e8f2), 0, -.78, 0);
+    return -1.4;
+  }
+});
+
 const SVIS = {
   buckler(g, box, M){ const m = new THREE.Mesh(new THREE.CylinderGeometry(.27, .27, .06, 10), M(0x6b5236)); m.rotation.x = Math.PI/2; m.position.z = .05; g.add(m); box(g, .1, .1, .05, M(0x8a8a90), 0, 0, .09); },
   knight(g, box, M){ box(g, .5, .66, .07, M(0x3a4a6e), 0, 0, .04); box(g, .5, .08, .08, M(0xc9a24c), 0, .2, .05); box(g, .08, .5, .08, M(0xc9a24c), 0, 0, .05); },

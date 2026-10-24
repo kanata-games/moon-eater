@@ -71,7 +71,7 @@ function buildAstarte(){
     const g = new THREE.Group(); g.position.set(0, i === 0 ? .05 : .17, i === 0 ? -.3 : 0); parent.add(g);
     box(g, .1 - i*.006, .18, .1 - i*.006, mWhite, 0, .09, 0); tail.push(g); parent = g;
   }
-  equipVisual(H, 'moonblade', 'none');
+  equipVisual(H, 'scythe', 'none');
   H.root.scale.setScalar(.95);
   H.anim = (dt, t, spd) => {
     tail.forEach((g, i) => { g.rotation.x = (i === 0 ? -1.0 : .28) + Math.sin(t*3 - i*.7)*.08*(1 + spd*.3); g.rotation.z = Math.sin(t*2.2 - i*.6)*(.12 + spd*.05); });
@@ -131,9 +131,10 @@ function buildUmine(){
 const CHARS = {
   astarte: {
     id: 'astarte', name: 'アスターテ', role: '近接型',
-    desc: '猫耳フードの剣士。月刃で斬り込み、刃で攻撃を受け流す。',
-    start: { r: 'moonblade', l: 'none', inv: ['moonblade', 'buckler'] },
-    hp: [400, 42], st: [100, 7], atk: [32, 4.8], stat3: '筋力', guardChip: .08, build: buildAstarte
+    desc: '猫耳フードの旅人。星詠みの大鎌のほか、錫杖・弩・三味線・刺剣を使い分ける。',
+    start: { r: 'scythe', l: 'none', inv: ['scythe', 'moonStaff', 'crossbow', 'shamisen', 'rapier', 'moonblade', 'buckler'] },
+    own: ['scythe', 'moonStaff', 'crossbow', 'shamisen', 'rapier'],
+    hp: [400, 42], st: [100, 7], atk: [32, 4.8], spell: [26, 3.5], mp: [60, 3], stat3: '筋力', guardChip: .08, build: buildAstarte
   },
   umine: {
     id: 'umine', name: '海音', role: '魔法型',

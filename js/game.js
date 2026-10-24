@@ -19,6 +19,7 @@ function applySave(s){
   const C = CHARS[s.char] || CHARS.astarte;
   G.inv = Array.isArray(s.inv) ? s.inv.slice() : C.start.inv.slice();
   P.eq = s.eq ? { r: s.eq.r, l: s.eq.l } : { r: C.start.r, l: C.start.l };
+  (C.own || []).forEach(id => { if (!G.inv.includes(id)) G.inv.push(id); }); // 専用武器は最初から持っている
   setCharacter(s.char || 'astarte');
   P.vit = s.vit || 1; P.end = s.end || 1; P.str = s.str || 1; P.souls = s.souls || 0;
   G.lit = s.lit || {}; G.bosses = s.bosses || {}; G.taken = s.taken || {}; G.opened = s.opened || {}; G.stain = s.stain || null; G.loc = s.loc || null; P.bonfire = s.bonfire || null;
@@ -154,9 +155,13 @@ const speedWord = s => s <= .8 ? 'とても速い' : s < .98 ? '速い' : s <= 1
 function itemStats(id){
   const it = ITEMS[id];
   if (it.slot === 'r'){
-    const rows = [['弱攻撃', Math.round(P.atk*it.mult)], ['強攻撃', Math.round(P.atk*it.heavy)], ['速さ', speedWord(it.spd)], ['間合い', it.reach.toFixed(1) + ' m']];
-    if (it.catalyst) rows.push(['魔力', CH().caster ? Math.round(P.spell*(it.spell || 1)) : '—（海音のみ）']);
+    let rows;
+    if (it.mode === 'bow') rows = [['射撃', Math.round(P.atk*1.15)], ['貫通射', Math.round(P.atk*2.3)], ['速さ', '普通'], ['間合い', '遠く']];
+    else if (it.mode === 'music') rows = [['音撃', Math.round(P.atk*.95)], ['調べ', '回復と攻撃+20%'], ['速さ', '普通'], ['間合い', '前方 4.8 m']];
+    else rows = [['弱攻撃', Math.round(P.atk*it.mult)], ['強攻撃', Math.round(P.atk*it.heavy)], ['速さ', speedWord(it.spd)], ['間合い', it.reach.toFixed(1) + ' m']];
+    if (it.catalyst) rows.push(['魔力', (CH().caster || it.only === P.char) && P.spell ? Math.round(P.spell*(it.spell || 1)) : '—（海音のみ）']);
     const tags = [];
+    if (it.only) tags.push(CHARS[it.only].name + '専用'); if (it.heavyArc >= 360) tags.push('回転斬り'); if (it.parry) tags.push('パリィしやすい'); if (it.mode === 'music') tags.push('盾を崩す');
     if (it.guardBreak) tags.push('盾を崩す'); if (it.crit > 1) tags.push('致命が深い'); if (it.arc >= 110) tags.push('横に広い'); if (it.arc <= 40) tags.push('突き');
     if (tags.length) rows.push(['特徴', tags.join('・')]);
     return rows;
@@ -171,7 +176,7 @@ function itemStats(id){
 function renderEquip(){
   $('slotR').classList.toggle('on', eqSlot === 'r'); $('slotL').classList.toggle('on', eqSlot === 'l');
   $('slotRName').textContent = ITEMS[P.eq.r].name; $('slotLName').textContent = ITEMS[P.eq.l].name;
-  const owned = (eqSlot === 'l' ? ['none'] : []).concat(G.inv.filter(id => ITEMS[id] && ITEMS[id].slot === eqSlot));
+  const owned = (eqSlot === 'l' ? ['none'] : []).concat(G.inv.filter(id => ITEMS[id] && ITEMS[id].slot === eqSlot && (!ITEMS[id].only || ITEMS[id].only === P.char)));
   const list = $('eqList'); list.innerHTML = '';
   owned.forEach(id => {
     const b = document.createElement('button'); b.className = 'eqitem'; const worn = P.eq[eqSlot] === id;
@@ -321,7 +326,8 @@ function updateHUD(dt){
   $('hpBar').style.width = (P.maxHp*.58) + 'px'; $('stBar').style.width = (P.maxSt*1.9) + 'px';
   $('hpFill').style.width = (Math.max(0, P.hp)/P.maxHp*100) + '%'; $('hpLag').style.width = (hpLagV/P.maxHp*100) + '%';
   $('stFill').style.width = (Math.max(0, P.st)/P.maxSt*100) + '%';
-  $('mpBar').hidden = !P.maxMp;
+  $('mpBar').hidden = !(P.maxMp && (CH().caster || canCast()));
+  $('buff').hidden = !(P.buffT > 0); if (P.buffT > 0) $('buffT').textContent = Math.ceil(P.buffT);
   if (P.maxMp){ $('mpBar').style.width = (P.maxMp*1.6) + 'px'; $('mpFill').style.width = (Math.max(0, P.mp)/P.maxMp*100) + '%'; }
   $('flaskNum').textContent = '×' + P.flasks; $('vial').classList.toggle('empty', P.flasks === 0);
   soulShown += (P.souls - soulShown)*Math.min(1, dt*6); if (Math.abs(P.souls - soulShown) < 1) soulShown = P.souls;

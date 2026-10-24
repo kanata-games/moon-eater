@@ -6,7 +6,7 @@ const P = {
   pos: new THREE.Vector3(0, 0, 2.2), face: Math.PI, hp: 380, maxHp: 380, st: 95, maxSt: 95, stDelay: 0, atk: 30,
   flasks: 4, maxFlasks: 4, souls: 0, vit: 1, end: 1, str: 1, state: 'idle', t: 0, combo: 0, hitSet: new Set(), swung: false,
   lock: null, bonfire: null, buf: null, bufT: 0, walk: 0, guarding: false, sprinting: false, kb: new THREE.Vector3(), kbT: 0, healed: false,
-  chestV: new THREE.Vector3(), eq: { r: 'moonblade', l: 'none' }, wact: null, char: 'astarte', mp: 0, maxMp: 0, mpDelay: 0, spell: 0, animT: 0,
+  chestV: new THREE.Vector3(), buffT: 0, eq: { r: 'moonblade', l: 'none' }, wact: null, char: 'astarte', mp: 0, maxMp: 0, mpDelay: 0, spell: 0, animT: 0,
   H: null
 };
 // 主人公を切り替える（見た目と能力）
@@ -24,10 +24,13 @@ function applyEquip(){
   const W = ITEMS[P.eq.r], s = W.spd, lg = W.lunge || 1.8;
   P.wact = {
     light: { dur: .62*s, cost: 16*W.cost, act: [.17*s, .29*s], cancel: .40*s, reach: W.reach, arc: W.arc, mult: W.mult, move: [.05*s, .24*s, lg], kinds: W.kinds, guardBreak: !!W.guardBreak },
-    heavy: { dur: 1.0*s, cost: 32*W.cost, act: [.46*s, .6*s], cancel: .78*s, reach: W.reach + .25, arc: W.arc*.85, mult: W.heavy, move: [.38*s, .58*s, lg*1.45], heavy: true, kind: W.heavyKind || 'heavy' }
+    heavy: { dur: 1.0*s, cost: 32*W.cost, act: [.46*s, .6*s], cancel: .78*s, reach: W.reach + .25, arc: W.heavyArc || W.arc*.85, mult: W.heavy, move: [.38*s, .58*s, lg*1.45], heavy: true, kind: W.heavyKind || 'heavy' }
   };
 }
 const getAct = s => (s === 'light' || s === 'heavy') ? P.wact[s] : ACT[s];
+const WEP = () => ITEMS[P.eq.r];
+const canCast = () => !!WEP().catalyst && (CH().caster || WEP().only === P.char) && P.maxMp > 0;
+const dmgMul = () => P.buffT > 0 ? 1.2 : 1;  // 月見の調べで攻撃が上がる
 const SHIELD = () => P.eq.l !== 'none' ? ITEMS[P.eq.l] : null;
 const spellPow = () => P.spell*((ITEMS[P.eq.r] && ITEMS[P.eq.r].spell) || 1);
 const CH = () => CHARS[P.char];
@@ -47,7 +50,12 @@ const ACT = {
   heal:   { dur: 1.35, cost: 0, cancel: 99 },
   stagger:{ dur: .55, cancel: 99 }, guardHit: { dur: .32, cancel: .2 }, guardBreak: { dur: 1.15, cancel: 99 }, crit: { dur: 1.6, cancel: 99 },
   gate:   { dur: 1.4, cancel: 99 },
-  // 魔法（海音）。mp=消費MP
+  // 弩・三味線（アスターテ専用）
+  shoot:      { dur: .75, cost: 14, act: [.32, .36], cancel: .55 },
+  shootHeavy: { dur: 1.3, cost: 26, act: [.85, .9], cancel: 1.05 },
+  strum:      { dur: .72, cost: 18, act: [.28, .34], cancel: .52 },
+  song:       { dur: 2.0, cost: 40, act: [1.5, 1.55], cancel: 99 },
+  // 魔法（海音・錫杖のアスターテ）。mp=消費MP
   cast:      { dur: .58, cost: 8,  mp: 9,  act: [.24, .28], cancel: .44 },
   castHeavy: { dur: 1.1, cost: 18, mp: 26, act: [.56, .62], cancel: .9 }
 };
@@ -80,9 +88,12 @@ function startCrit(c){
 function startAction(a, mv, ml){
   if (a === 'heal'){ if (P.flasks <= 0) return true; P.flasks--; setState('heal'); return true; }
   if (getAct(a).cost && P.st <= 0) return false;
-  if (a === 'light' || a === 'heavy'){ const c = findCrit(); if (c){ startCrit(c); return true; } }
-  // 魔法型：MPが足りれば魔法、足りなければ杖で殴る
-  if (CH().caster && ITEMS[P.eq.r].catalyst && (a === 'light' || a === 'heavy')){
+  const W = WEP();
+  if ((a === 'light' || a === 'heavy') && !W.mode){ const c = findCrit(); if (c){ startCrit(c); return true; } }
+  if (W.mode === 'bow' && (a === 'light' || a === 'heavy')) a = a === 'light' ? 'shoot' : 'shootHeavy';
+  if (W.mode === 'music' && (a === 'light' || a === 'heavy')) a = a === 'light' ? 'strum' : 'song';
+  // 触媒：MPが足りれば魔法、足りなければ杖で殴る
+  if (canCast() && (a === 'light' || a === 'heavy')){
     const ca = a === 'light' ? 'cast' : 'castHeavy';
     if (P.mp >= ACT[ca].mp){ a = ca; P.mp -= ACT[ca].mp; P.mpDelay = 1.3; }
   }
@@ -96,7 +107,7 @@ function startAction(a, mv, ml){
   return true;
 }
 function playerHitCheck(d){
-  const dmg = P.atk*d.mult;
+  const dmg = P.atk*d.mult*dmgMul();
   for (const e of enemies){
     if (e.dead || !e.active() || P.hitSet.has(e) || e.y > 2 || e.state === 'critted') continue;
     const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z, dist = Math.hypot(dx, dz) - e.T.radius;
@@ -115,7 +126,7 @@ function hurtPlayer(dmg, src, A = {}){
   if (P.state === 'dead' || P.state === 'crit' || P.state === 'gate') return 'none';
   const ang = Math.atan2(src.x - P.pos.x, src.z - P.pos.z), facing = Math.abs(angDiff(P.face, ang)) < 1.35;
   if (P.state === 'roll' && P.t >= ACT.roll.iframe[0] && P.t <= ACT.roll.iframe[1]) return 'dodge';
-  const SH = SHIELD(), pw = SH ? SH.parry : BARE.parry;
+  const SH = SHIELD(), pw = SH ? SH.parry : (WEP().parry || BARE.parry);
   if (P.state === 'parry' && P.t >= pw[0] && P.t <= pw[1] && facing && !A.unparry){ sfx.parry(); hitStop = .15; shake = .1; return 'parry'; }
   const kb = (s) => { P.kb.set(P.pos.x - src.x, 0, P.pos.z - src.z).normalize().multiplyScalar(s); P.kbT = .22; };
   P.chestV.set(P.pos.x, 1.3, P.pos.z);
@@ -145,7 +156,7 @@ function updatePlayer(dt, I){
   let ml = Math.hypot(mv.x, mv.z); if (ml > 1){ mv.x /= ml; mv.z /= ml; ml = 1; }
   if (P.stDelay > 0) P.stDelay -= dt; else if (!P.sprinting) P.st = Math.min(P.maxSt, P.st + (P.guarding ? 18 : 50)*dt);
   if (P.maxMp){ if (P.mpDelay > 0) P.mpDelay -= dt; else P.mp = Math.min(P.maxMp, P.mp + 3.5*dt); }
-  P.animT += dt;
+  P.animT += dt; if (P.buffT > 0) P.buffT -= dt;
   if (P.kbT > 0){ P.kbT -= dt; P.pos.x += P.kb.x*dt; P.pos.z += P.kb.z*dt; }
   P.t += dt;
   if (P.state === 'dead'){
@@ -206,13 +217,33 @@ function updatePlayer(dt, I){
     case 'cast': case 'castHeavy': {
       const d = ACT[P.state], heavy = P.state === 'castHeavy';
       if (P.t < d.act[0] && P.lock) P.face = turnTo(P.face, angTo(P.lock), 8*dt);
-      if (!P.swung && P.t >= d.act[0]){ P.swung = true; heavy ? castGeyser() : castBolt(); }
+      if (!P.swung && P.t >= d.act[0]){ P.swung = true; const moon = WEP().spellFx === 'moon'; heavy ? (moon ? castMoonRing() : castGeyser()) : castBolt(moon ? 0xfff0b8 : null); }
       const stg = P.t < d.act[0] ? 0 : P.t < d.act[1] ? 1 : 2;
       const f = stg === 0 ? P.t/d.act[0] : stg === 1 ? (P.t - d.act[0])/(d.act[1] - d.act[0]) : Math.min(1, (P.t - d.act[1])/(d.dur - d.act[1]));
       attackPose(H, heavy ? 'slam' : 'thrust', stg, f);
       if (!heavy && stg === 1) H.armR.rotation.z = 0; // 杖をまっすぐ前に
       applyPose(H, { legR: [.3, 0, 0], legL: [-.3, 0, 0], rig: [0, 0, 0], rigY: .75 }, .3);
       if (P.t < d.act[0] && Math.random() < dt*30){ H.tip.getWorldPosition(_v); burst(_v, 'water', 1, .6, -1, .4, .8); }
+      break;
+    }
+    case 'shoot': case 'shootHeavy': {
+      const d = ACT[P.state], heavy = P.state === 'shootHeavy';
+      if (P.t < d.act[0] && P.lock) P.face = turnTo(P.face, angTo(P.lock), 10*dt);
+      if (!P.swung && P.t >= d.act[0]){ P.swung = true; fireArrow(heavy); }
+      const stg = P.t < d.act[0] ? 0 : P.t < d.act[1] ? 1 : 2;
+      const f = stg === 0 ? P.t/d.act[0] : stg === 1 ? (P.t - d.act[0])/(d.act[1] - d.act[0]) : Math.min(1, (P.t - d.act[1])/(d.dur - d.act[1]));
+      attackPose(H, 'shoot', stg, f);
+      if (heavy && stg === 0) H.torso.rotation.x = -.12*f; // 引き絞る
+      applyPose(H, { legR: [.25, 0, 0], legL: [-.25, 0, 0], rig: [0, 0, 0], rigY: .75 }, .3);
+      break;
+    }
+    case 'strum': case 'song': {
+      const d = ACT[P.state], song = P.state === 'song';
+      if (!song && P.t < d.act[0] && P.lock) P.face = turnTo(P.face, angTo(P.lock), 8*dt);
+      if (!P.swung && P.t >= d.act[0]){ P.swung = true; song ? playSong() : strumWave(); }
+      const b = Math.sin(P.t*(song ? 9 : 14));
+      applyPose(H, { aR: [-1.1 + b*.12, 0, -.6], aL: [-1.2, 0, .55], tor: [song ? -.1 : .1, song ? Math.sin(P.t*2)*.15 : 0, 0], legR: [.15, 0, 0], legL: [-.15, 0, 0], rig: [0, 0, 0], rigY: .75 }, .35);
+      if (Math.random() < dt*(song ? 14 : 6)){ H.tip.getWorldPosition(_v); burst(_v, song ? 'heal' : 'blue', 1, .8, -1.2, .7, .9); }
       break;
     }
     case 'heal': {
@@ -228,7 +259,7 @@ function updatePlayer(dt, I){
       const e = P.critE, t = P.t;
       if (t < .5) attackPose(H, 'thrust', 0, t/.5); else if (t < .65) attackPose(H, 'thrust', 1, (t - .5)/.15); else if (t > 1.1) attackPose(H, 'thrust', 2, Math.min(1, (t - 1.1)/.5));
       if (!P.critHit && t >= .6){
-        P.critHit = true; const dmg = P.atk*(ITEMS[P.eq.r].mult*.5 + .5)*(ITEMS[P.eq.r].crit || 1)*(P.critType === 'back' ? 4 : 4.5)*(e.T.boss ? .85 : 1);
+        P.critHit = true; const dmg = dmgMul()*P.atk*(ITEMS[P.eq.r].mult*.5 + .5)*(ITEMS[P.eq.r].crit || 1)*(P.critType === 'back' ? 4 : 4.5)*(e.T.boss ? .85 : 1);
         e.hp -= dmg; e.hpShow = 3; e.chest(_v); burst(_v, 'blood', 28, 5, 9, .7, 1.3); sfx.crit(); hitStop = .16; shake = .25;
         if (e.T.boss && e.hp > 0 && !e.phase2 && e.hp < e.T.hp*.5) e.pendingP2 = true;
       }
