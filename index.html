@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>月喰いの城</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="cv"></canvas>
+  <div id="hud" hidden>
+    <div class="bars">
+      <div class="bar hp" id="hpBar"><b id="hpLag"></b><i id="hpFill"></i></div>
+      <div class="bar st" id="stBar"><i id="stFill"></i></div>
+    </div>
+    <div id="flask"><span class="vial" id="vial"></span><div><div class="lbl">月光の雫</div><div class="num" id="flaskNum">×4</div></div></div>
+    <div id="souls"><span class="lbl">魂</span><span class="num" id="soulNum">0</span></div>
+    <div id="boss" hidden><div class="name" id="bossName"></div><div class="bbar"><b id="bossLag"></b><i id="bossFill"></i></div></div>
+    <div id="prompt" hidden></div>
+    <div id="reticle" hidden></div>
+    <div id="ehps"></div>
+    <div id="area"></div>
+    <div id="note" hidden><small>書き置き</small><span id="noteText"></span></div>
+  </div>
+  <div id="banner"><div><div class="t" id="bannerT"></div><div class="s" id="bannerS"></div></div></div>
+  <div id="fade"></div>
+
+  <div id="title" class="screen title">
+    <div class="tcol">
+      <div class="kicker">ブラウザ死にゲーアクション</div>
+      <h1>月喰いの城</h1>
+      <div class="sub">CASTLE OF THE MOON-EATER</div>
+      <p class="lore">月を喰らう番人が城を閉ざして百年。<br>祭壇の要石に触れ、霧の向こうへ。</p>
+      <div class="tbtns">
+        <button id="contBtn" class="btn primary" hidden>続きから<small id="contInfo"></small></button>
+        <button id="newBtn" class="btn primary">はじめから</button>
+      </div>
+      <label class="opt" for="qual">画質
+        <select id="qual">
+          <option value="3">粗い（初代PS風・軽い）</option>
+          <option value="2">標準</option>
+          <option value="1.25">なめらか（重い）</option>
+        </select>
+      </label>
+    </div>
+    <div class="controls" id="ctrlBox">
+      <h2>操作</h2>
+      <table>
+        <tr><td>移動</td><td>WASD</td><td>左スティック</td></tr>
+        <tr><td>視点</td><td>マウス／矢印キー</td><td>右スティック</td></tr>
+        <tr><td>弱攻撃</td><td>左クリック／J</td><td>R1</td></tr>
+        <tr><td>強攻撃</td><td>Shift＋左クリック／K</td><td>R2</td></tr>
+        <tr><td>ガード</td><td>右クリック長押し／L</td><td>L1</td></tr>
+        <tr><td>パリィ</td><td>F</td><td>L2</td></tr>
+        <tr><td>ローリング</td><td>スペース短押し</td><td>○(B)</td></tr>
+        <tr><td>ダッシュ</td><td>スペース長押し</td><td>○(B)長押し</td></tr>
+        <tr><td>ロックオン</td><td>Q／ホイールクリック</td><td>R3</td></tr>
+        <tr><td>回復</td><td>R</td><td>□(X)</td></tr>
+        <tr><td>調べる・篝火</td><td>E</td><td>×(A)</td></tr>
+        <tr><td>一時停止</td><td>Esc</td><td>START</td></tr>
+      </table>
+      <p>敵の背後から攻撃すると「背後致命」。攻撃の出始めにパリィを合わせ、体勢を崩した敵に攻撃すると「致命の一撃」。死ぬと魂をその場に落とします。魂は祭壇の灯守りに捧げると力になります。</p>
+    </div>
+  </div>
+
+  <div id="pause" class="screen center" hidden>
+    <div class="panel">
+      <h2>一時停止</h2>
+      <button id="resumeBtn" class="btn primary">再開する</button>
+      <label class="opt" for="sens">視点感度 <input type="range" id="sens" min="0.3" max="2.2" step="0.1" value="1"></label>
+      <label class="opt" for="qual2">画質
+        <select id="qual2">
+          <option value="3">粗い（初代PS風・軽い）</option>
+          <option value="2">標準</option>
+          <option value="1.25">なめらか（重い）</option>
+        </select>
+      </label>
+      <button id="titleBtn" class="btn">タイトルへ戻る<small>進行は最後に休んだ時点まで保存されています</small></button>
+      <div id="ctrlSlot"></div>
+    </div>
+  </div>
+
+  <div id="menu" class="screen center" hidden>
+    <div class="panel">
+      <h2 id="mTitle"></h2>
+      <p class="msg" id="mMsg"></p>
+      <div id="mLevel" hidden>
+        <div class="head"><span>レベル <b id="lvNum">1</b></span><span>所持魂 <b id="lvSouls">0</b></span><span>必要魂 <b id="needSouls">0</b></span></div>
+        <div class="stats">
+          <div class="row"><div>体力 <span class="d" id="dVit"></span></div><div class="v" id="vVit">1</div><button class="plus" id="pVit" aria-label="体力を上げる">＋</button></div>
+          <div class="row"><div>持久 <span class="d" id="dEnd"></span></div><div class="v" id="vEnd">1</div><button class="plus" id="pEnd" aria-label="持久を上げる">＋</button></div>
+          <div class="row"><div>筋力 <span class="d" id="dStr"></span></div><div class="v" id="vStr">1</div><button class="plus" id="pStr" aria-label="筋力を上げる">＋</button></div>
+        </div>
+      </div>
+      <div class="sep" id="mListSep"></div>
+      <div class="list" id="mList"></div>
+      <button id="leaveBtn" class="btn primary">立ち去る</button>
+    </div>
+  </div>
+</div>
+
+<!-- 3D描画ライブラリ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- エンジン（読み込む順番に意味があります） -->
+<script src="js/core.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/world.js"></script>
+<script src="js/rig.js"></script>
+<script src="js/enemies.js"></script>
+<script src="js/player.js"></script>
+<!-- ステージ（増やすときはここに1行足す） -->
+<script src="stages/nexus.js"></script>
+<script src="stages/castle.js"></script>
+<!-- 本体 -->
+<script src="js/game.js"></script>
+</body>
+</html>

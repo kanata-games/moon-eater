@@ -1,0 +1,391 @@
+'use strict';
+// =========================================================
+// game.js — 進行管理・セーブ・入力・メニュー・HUD・カメラ・メインループ
+// =========================================================
+let running = false, paused = false, menu = null, simTime = 0, hitStop = 0, shake = 0;
+let bossFight = false, timers = [];
+let camYaw = Math.PI, camPitch = .28;
+// G = 保存される進行状況
+const G = { lit: {}, bosses: {}, stain: null, loc: null };
+function later(sec, fn){ timers.push({ t: simTime + sec, fn }); }
+
+// ---------- セーブ ----------
+const SAVE_KEY = 'save1';
+function save(){
+  store.set(SAVE_KEY, { v: 1, vit: P.vit, end: P.end, str: P.str, souls: P.souls, lit: G.lit, bosses: G.bosses, stain: G.stain, loc: G.loc, bonfire: P.bonfire, at: Date.now() });
+}
+function readSave(){ const s = store.get(SAVE_KEY, null); return s && s.v === 1 ? s : null; }
+function applySave(s){
+  P.vit = s.vit || 1; P.end = s.end || 1; P.str = s.str || 1; P.souls = s.souls || 0;
+  G.lit = s.lit || {}; G.bosses = s.bosses || {}; G.stain = s.stain || null; G.loc = s.loc || null; P.bonfire = s.bonfire || null;
+  recompute();
+}
+function resetProgress(){ P.vit = P.end = P.str = 1; P.souls = 0; G.lit = {}; G.bosses = {}; G.stain = null; G.loc = null; P.bonfire = null; recompute(); }
+
+// ---------- ステージの出入り ----------
+function enterStage(id, bonfireId){
+  unloadStage(); timers = []; bossFight = false; droneOff(); $('boss').hidden = true; $('note').hidden = true; noteRune = null;
+  loadStage(id);
+  let sp;
+  if (stage.hub) sp = stage.spawn;
+  else {
+    const b = bonfires.find(b => b.id === bonfireId && b.lit) || bonfires.find(b => b.lit) || bonfires[0];
+    sp = { x: b.x + (b.def.sx ?? 1.6), z: b.z + (b.def.sz ?? .4), face: b.def.face ?? Math.PI };
+    P.bonfire = { stage: id, id: b.id };
+  }
+  P.pos.set(sp.x, 0, sp.z); P.face = sp.face; camYaw = sp.face; camPitch = .28;
+  P.hp = P.maxHp; P.st = P.maxSt; P.flasks = P.maxFlasks; P.lock = null; P.kbT = 0; P.buf = null;
+  setState('idle'); resetPlayerBody(); hpLagV = P.hp;
+  curArea = '';
+  G.loc = { stage: id, bonfire: stage.hub ? null : P.bonfire.id };
+  save();
+}
+// フェードしながら移動
+function travel(id, bonfireId){
+  menu = 'travel'; closeMenuUI(); sfx.warp();
+  try { document.exitPointerLock(); } catch(e){}
+  $('fade').classList.add('on');
+  setTimeout(() => {
+    enterStage(id, bonfireId);
+    $('fade').classList.remove('on');
+    menu = null; requestLock();
+    banner(stage.name, 'soft', 2.2, stage.sub || '');
+  }, 750);
+}
+function onPlayerDeath(){
+  // 落とした魂（前の血痕は消える）
+  G.stain = P.souls > 0 ? { stage: stage.id, x: P.deathPos.x, z: P.deathPos.z, souls: P.souls } : null;
+  P.souls = 0; soulShown = 0;
+  enterStage(stage.id, P.bonfire && P.bonfire.stage === stage.id ? P.bonfire.id : null);
+}
+function startBossFight(){
+  bossFight = true; boss.reset(); boss.aggro = true; boss.state = 'roar'; boss.t = 0; sfx.roar(); shake = .5; droneOn();
+  $('bossName').textContent = boss.T.name; $('boss').hidden = false; bossLagV = boss.hp;
+}
+function bossKilled(){
+  G.bosses[stage.id] = true; bossFight = false; droneOff(); openGate(); save();
+  setTimeout(() => { $('boss').hidden = true; }, 1500);
+  later(1.2, () => { banner('宿敵撃破', 'victory', 3.4, `${boss ? boss.T.name : ''}を討ち果たした`); sfx.victory(); });
+  later(5.2, () => { spawnReturnStone(true); banner('帰還の要石が現れた', 'soft', 2.6, '祭壇へ戻り、魂を捧げよ'); });
+}
+
+// ---------- 篝火・要石・灯守り ----------
+function useBonfire(b){
+  if (!b.lit){
+    b.lit = true; setFlame(b.flame, true); setLit(stage.id, b.id); P.bonfire = { stage: stage.id, id: b.id };
+    banner('篝火を灯した', 'lit', 2.0, b.name); sfx.rest(); G.loc = { stage: stage.id, bonfire: b.id }; save(); return;
+  }
+  sfx.rest(); enterStage(stage.id, b.id); openBonfireMenu();
+}
+function openBonfireMenu(){
+  const here = P.bonfire.id, def = (stage.bonfires || []).find(b => b.id === here);
+  const items = litBonfires(stage.id).filter(b => b.id !== here).map(b => ({ label: b.name, fn: () => { enterStage(stage.id, b.id); openBonfireMenu(); } }));
+  items.push({ label: '月影の祭壇へ帰る', sub: 'レベルアップは祭壇の灯守りで', fn: () => travel('nexus') });
+  openMenu({ title: def ? def.name : '篝火', msg: '休息した。体力と月光の雫が戻り、倒した亡者たちが蘇った。', listTitle: '移動', items });
+}
+function openArchstone(stageId){
+  const def = STAGES[stageId];
+  const items = litBonfires(stageId).map(b => ({ label: b.name, fn: () => travel(stageId, b.id) }));
+  const msg = G.bosses[stageId] ? `${def.sub || ''}　討伐済み` : (def.sub || '');
+  openMenu({ title: def.name, msg, listTitle: '向かう篝火', items, leave: 'やめる' });
+}
+function openKeeper(){
+  openMenu({ title: '灯守り', msg: '「魂を……。その器に、月の光を注ぎましょう」', level: true, items: [] });
+}
+
+// ---------- メニュー ----------
+function openMenu(o){
+  menu = 'menu'; try { document.exitPointerLock(); } catch(e){}
+  $('mTitle').textContent = o.title; $('mMsg').textContent = o.msg || ''; $('mMsg').hidden = !o.msg;
+  $('mLevel').hidden = !o.level; if (o.level) renderLevel();
+  const list = $('mList'); list.innerHTML = '';
+  $('mListSep').hidden = !o.items.length; $('mListSep').textContent = o.listTitle || '';
+  o.items.forEach(it => {
+    const b = document.createElement('button'); b.className = 'btn'; b.textContent = it.label;
+    if (it.sub){ const s = document.createElement('small'); s.textContent = it.sub; b.appendChild(s); }
+    b.addEventListener('click', it.fn); list.appendChild(b);
+  });
+  $('leaveBtn').textContent = o.leave || '立ち去る';
+  $('menu').hidden = false;
+}
+function closeMenuUI(){ $('menu').hidden = true; }
+function leaveMenu(){ if (menu !== 'menu') return; menu = null; closeMenuUI(); requestLock(); }
+$('leaveBtn').addEventListener('click', leaveMenu);
+const level = () => P.vit + P.end + P.str - 2;
+const cost = () => Math.round(240*Math.pow(1.12, level() - 1));
+function renderLevel(){
+  $('lvNum').textContent = level(); $('lvSouls').textContent = P.souls; $('needSouls').textContent = cost();
+  $('vVit').textContent = P.vit; $('vEnd').textContent = P.end; $('vStr').textContent = P.str;
+  $('dVit').textContent = `最大HP ${P.maxHp}`; $('dEnd').textContent = `スタミナ ${P.maxSt}`; $('dStr').textContent = `攻撃力 ${Math.round(P.atk)}`;
+  const can = P.souls >= cost(); ['pVit', 'pEnd', 'pStr'].forEach(id => $(id).disabled = !can);
+}
+function levelUp(stat){ if (P.souls < cost()) return; P.souls -= cost(); P[stat]++; recompute(); P.hp = P.maxHp; P.st = P.maxSt; hpLagV = P.hp; soulShown = P.souls; renderLevel(); sfx.levelUp(); save(); }
+$('pVit').addEventListener('click', () => levelUp('vit')); $('pEnd').addEventListener('click', () => levelUp('end')); $('pStr').addEventListener('click', () => levelUp('str'));
+
+function pause(){ paused = true; $('pause').hidden = false; $('ctrlSlot').appendChild($('ctrlBox')); }
+function resume(){ paused = false; $('pause').hidden = true; requestLock(); }
+$('resumeBtn').addEventListener('click', resume);
+$('titleBtn').addEventListener('click', () => {
+  paused = false; running = false; $('pause').hidden = true; $('hud').hidden = true;
+  document.querySelector('#title .tcol').after($('ctrlBox'));
+  showTitle();
+});
+
+// ---------- 設定 ----------
+$('qual').value = String(pixelScale); $('qual2').value = String(pixelScale); $('sens').value = sens;
+function setQuality(v){ pixelScale = parseFloat(v); store.set('qual', pixelScale); $('qual').value = String(pixelScale); $('qual2').value = String(pixelScale); resize(); }
+$('qual').addEventListener('change', e => setQuality(e.target.value));
+$('qual2').addEventListener('change', e => setQuality(e.target.value));
+$('sens').addEventListener('input', e => { sens = parseFloat(e.target.value); store.set('sens', sens); });
+
+// ---------- 入力 ----------
+const keys = {}, pressed = new Set(); let mouseR = false, locked = false, spaceT = 0, gpPrev = [], gpRollT = 0;
+addEventListener('keydown', e => {
+  if (['Space', 'Tab', 'KeyQ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) && running) e.preventDefault();
+  if (e.repeat) return;
+  keys[e.code] = true; pressed.add(e.code);
+  if (e.code === 'Space') spaceT = 0;
+  if (menu === 'menu' && (e.code === 'Escape' || e.code === 'KeyE')){ leaveMenu(); return; }
+  if (running && !menu && !locked && (e.code === 'Escape' || e.code === 'KeyP')){ paused ? resume() : pause(); }
+});
+addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Space') pressed.add('SpaceUp'); });
+cv.addEventListener('mousedown', e => {
+  if (!running || paused || menu) return;
+  if (!locked) requestLock();
+  if (e.button === 0) pressed.add('M0');
+  if (e.button === 1){ pressed.add('M1'); e.preventDefault(); }
+  if (e.button === 2) mouseR = true;
+});
+addEventListener('mouseup', e => { if (e.button === 2) mouseR = false; });
+addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('mousemove', e => {
+  if (!running || paused || menu) return;
+  if (locked || e.buttons){ camYaw -= e.movementX*.0024*sens; camPitch += e.movementY*.0022*sens; }
+});
+function requestLock(){ try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch(e){} }
+document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === cv; if (!locked && running && !menu && !paused) pause(); });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseR = false; if (running && !menu && !paused) pause(); });
+
+function readInput(dt){
+  const I = { mx: 0, mz: 0, light: false, heavy: false, guard: false, parry: false, roll: false, sprint: false, lock: false, heal: false, use: false };
+  if (keys.KeyW) I.mz += 1; if (keys.KeyS) I.mz -= 1; if (keys.KeyA) I.mx -= 1; if (keys.KeyD) I.mx += 1;
+  if (keys.ArrowLeft) camYaw += 2.4*dt*sens; if (keys.ArrowRight) camYaw -= 2.4*dt*sens; if (keys.ArrowUp) camPitch -= 1.5*dt*sens; if (keys.ArrowDown) camPitch += 1.5*dt*sens;
+  const shift = keys.ShiftLeft || keys.ShiftRight;
+  if (pressed.has('M0')){ if (shift) I.heavy = true; else I.light = true; }
+  if (pressed.has('KeyJ')) I.light = true; if (pressed.has('KeyK')) I.heavy = true;
+  if (pressed.has('KeyF')) I.parry = true; if (pressed.has('KeyQ') || pressed.has('M1')) I.lock = true;
+  if (pressed.has('KeyR')) I.heal = true; if (pressed.has('KeyE')) I.use = true;
+  I.guard = mouseR || !!keys.KeyL;
+  if (keys.Space) spaceT += dt;
+  if (pressed.has('SpaceUp')){ if (spaceT < .28) I.roll = true; spaceT = 0; }
+  if (keys.Space && spaceT >= .28) I.sprint = true;
+  // ゲームパッド
+  const gp = getPad();
+  if (gp){
+    const b = i => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > .5));
+    const edge = i => b(i) && !gpPrev[i];
+    const dz = v => Math.abs(v) < .18 ? 0 : v;
+    const ax = dz(gp.axes[0] || 0), ay = dz(gp.axes[1] || 0);
+    if (ax || ay){ I.mx = ax; I.mz = -ay; }
+    camYaw -= dz(gp.axes[2] || 0)*2.6*dt*sens; camPitch += dz(gp.axes[3] || 0)*1.8*dt*sens;
+    if (edge(5)) I.light = true; if (edge(7)) I.heavy = true; if (b(4)) I.guard = true; if (edge(6)) I.parry = true;
+    if (edge(11) || edge(10)) I.lock = true; if (edge(2)) I.heal = true; if (edge(0)) I.use = true;
+    if (b(1)){ gpRollT += dt; if (gpRollT >= .28) I.sprint = true; }
+    else { if (gpPrev[1] && gpRollT < .28) I.roll = true; gpRollT = 0; }
+    gpPrev = gp.buttons.map((_, i) => b(i));
+  }
+  return I;
+}
+function getPad(){ const pads = navigator.getGamepads ? navigator.getGamepads() : []; return pads && Array.from(pads).find(p => p && p.connected); }
+function pollPadMenus(){
+  const gp = getPad(); if (!gp) return;
+  const b = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
+  if (b(9) && !gpPrev[9]){ if (menu === 'menu') leaveMenu(); else if (running && !menu) (paused ? resume() : pause()); }
+  if (b(1) && !gpPrev[1] && menu === 'menu') leaveMenu();
+  if (paused || menu) gpPrev = gp.buttons.map((_, i) => b(i));
+  else gpPrev[9] = b(9);
+}
+
+// ---------- 調べる ----------
+let promptState = null, noteRune = null;
+function nearInteract(){
+  if (P.state !== 'idle') return null;
+  for (const b of bonfires){
+    if (Math.hypot(P.pos.x - b.x, P.pos.z - b.z) < 2.3){
+      const threat = enemies.some(e => !e.dead && e.active() && (e.state === 'chase' || e.state === 'wind' || e.state === 'act') && Math.hypot(e.pos.x - b.x, e.pos.z - b.z) < 12);
+      return threat ? { text: '敵が近くにいるため休めない', dim: true } : { text: b.lit ? '篝火で休む' : '篝火を灯す', use: () => useBonfire(b) };
+    }
+  }
+  if (gate && !gate.col.off && !bossFight){
+    const g = gate.def;
+    if (P.pos.x > g.x1 && P.pos.x < g.x2 && P.pos.z > g.z1 - 1.6 && P.pos.z < g.z2 + 1.6) return { text: '霧の中へ入る', use: enterBossGate };
+  }
+  for (const it of interactables) if (it.near(P.pos)){ const p = it.prompt(); return { text: p.text, dim: p.dim, use: it.use }; }
+  for (const r of runes) if (Math.hypot(P.pos.x - r.x, P.pos.z - r.z) < 1.5) return { text: '書き置きを読む', use: () => { noteRune = r; $('noteText').textContent = r.text; $('note').hidden = false; } };
+  return null;
+}
+function enterBossGate(){ setState('gate'); P.gateFrom = P.pos.clone(); sfx.gate(); P.lock = null; }
+
+// ---------- HUD ----------
+let bannerTimer = 0;
+function banner(text, cls, hold, sub){
+  const el = $('banner'); el.className = cls + ' on'; $('bannerT').textContent = text; $('bannerS').textContent = sub || '';
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => el.classList.remove('on'), hold*1000);
+}
+let areaTimer = 0, curArea = '';
+function areaName(){
+  const n = stage.area ? stage.area(P.pos) : stage.name;
+  if (n !== curArea){ curArea = n; const el = $('area'); el.textContent = n; el.classList.add('on'); clearTimeout(areaTimer); areaTimer = setTimeout(() => el.classList.remove('on'), 2600); }
+}
+let hpLagV = P.hp, bossLagV = 0, soulShown = 0;
+const ehpPool = [];
+for (let i = 0; i < 8; i++){ const d = document.createElement('div'); d.className = 'ehp'; d.hidden = true; d.innerHTML = '<i></i>'; $('ehps').appendChild(d); ehpPool.push(d); }
+function project(v){ _v2.copy(v).project(camera); return { x: (_v2.x*.5 + .5)*innerWidth, y: (-_v2.y*.5 + .5)*innerHeight, ok: _v2.z < 1 && Math.abs(_v2.x) < 1.1 && Math.abs(_v2.y) < 1.1 }; }
+function updateHUD(dt){
+  hpLagV = hpLagV > P.hp ? Math.max(P.hp, hpLagV - P.maxHp*.35*dt) : P.hp;
+  $('hpBar').style.width = (P.maxHp*.58) + 'px'; $('stBar').style.width = (P.maxSt*1.9) + 'px';
+  $('hpFill').style.width = (Math.max(0, P.hp)/P.maxHp*100) + '%'; $('hpLag').style.width = (hpLagV/P.maxHp*100) + '%';
+  $('stFill').style.width = (Math.max(0, P.st)/P.maxSt*100) + '%';
+  $('flaskNum').textContent = '×' + P.flasks; $('vial').classList.toggle('empty', P.flasks === 0);
+  soulShown += (P.souls - soulShown)*Math.min(1, dt*6); if (Math.abs(P.souls - soulShown) < 1) soulShown = P.souls;
+  $('soulNum').textContent = Math.round(soulShown);
+  if (boss && !$('boss').hidden){
+    bossLagV = bossLagV > boss.hp ? Math.max(boss.hp, bossLagV - boss.T.hp*.25*dt) : boss.hp;
+    $('bossFill').style.width = (Math.max(0, boss.hp)/boss.T.hp*100) + '%'; $('bossLag').style.width = (Math.max(0, bossLagV)/boss.T.hp*100) + '%';
+  }
+  const pr = $('prompt');
+  if (promptState && !menu){ pr.hidden = false; pr.className = promptState.dim ? 'dim' : ''; pr.innerHTML = ''; if (!promptState.dim){ const k = document.createElement('span'); k.className = 'key'; k.textContent = 'E'; pr.appendChild(k); } pr.appendChild(document.createTextNode(promptState.text)); }
+  else pr.hidden = true;
+  const rt = $('reticle');
+  if (P.lock){ P.lock.chest(_v); const p = project(_v); rt.hidden = !p.ok; rt.style.left = p.x + 'px'; rt.style.top = p.y + 'px'; } else rt.hidden = true;
+  let n = 0;
+  for (const e of enemies){
+    if (n >= ehpPool.length) break;
+    if (e.dead || e.T.boss || !(e.hpShow > 0 || P.lock === e)) continue;
+    _v.set(e.pos.x, 2.3*e.T.scale, e.pos.z); const p = project(_v); if (!p.ok) continue;
+    const d = ehpPool[n++]; d.hidden = false; d.style.left = p.x + 'px'; d.style.top = p.y + 'px'; d.firstChild.style.width = (Math.max(0, e.hp)/e.T.hp*100) + '%';
+  }
+  for (; n < ehpPool.length; n++) ehpPool[n].hidden = true;
+}
+
+// ---------- カメラ ----------
+const probe = new THREE.Vector3();
+function updateCamera(dt){
+  if (!running){
+    const t = performance.now()/1000*.07;
+    camera.position.set(Math.sin(t)*7.5, 3.2, 1 + Math.cos(t)*7.5); camera.lookAt(0, 1.2, -3); return;
+  }
+  const pivot = _v.set(P.pos.x, 1.55, P.pos.z);
+  if (P.lock){
+    const ty = angTo(P.lock); camYaw += angDiff(camYaw, ty)*Math.min(1, dt*7);
+    const tp = P.lock.T.boss ? .12 : .3; camPitch += (tp - camPitch)*Math.min(1, dt*3);
+  }
+  camPitch = clamp(camPitch, -.45, 1.05);
+  const cp = Math.cos(camPitch);
+  const dx = Math.sin(camYaw)*cp, dy = -Math.sin(camPitch), dz = Math.cos(camYaw)*cp;
+  const dist = bossFight ? 6.8 : 5.2;
+  const steps = 16; let lx = pivot.x, ly = pivot.y, lz = pivot.z;
+  for (let i = 1; i <= steps; i++){
+    const f = i/steps*dist; probe.set(pivot.x - dx*f, Math.max(.35, pivot.y - dy*f), pivot.z - dz*f);
+    if (insideAny(probe, .25)) break; lx = probe.x; ly = probe.y; lz = probe.z;
+  }
+  camera.position.set(lx, ly, lz);
+  if (shake > 0){ camera.position.x += (Math.random() - .5)*shake*.6; camera.position.y += (Math.random() - .5)*shake*.6; shake = Math.max(0, shake - dt*1.6); }
+  camera.lookAt(pivot.x, pivot.y, pivot.z);
+}
+
+// ---------- メインループ ----------
+function step(dt){
+  simTime += dt;
+  const I = readInput(dt);
+  if (I.lock){ P.lock = P.lock ? null : pickLock(); }
+  if (P.lock && (P.lock.dead || !P.lock.active() || Math.hypot(P.lock.pos.x - P.pos.x, P.lock.pos.z - P.pos.z) > 22)) P.lock = null;
+  promptState = nearInteract();
+  if (I.use){
+    if (!$('note').hidden){ $('note').hidden = true; noteRune = null; }
+    else if (promptState && promptState.use) promptState.use();
+  }
+  if (menu) return; // 篝火などでメニューが開いた
+  updatePlayer(dt, I);
+  for (const e of enemies) e.update(dt);
+  separate();
+  if (noteRune && Math.hypot(P.pos.x - noteRune.x, P.pos.z - noteRune.z) > 2.6){ $('note').hidden = true; noteRune = null; }
+  if (stainSprite && G.stain && P.state !== 'dead'){
+    stainSprite.position.y = .7 + Math.sin(simTime*3)*.12;
+    if (Math.random() < dt*8){ _v.set(G.stain.x + (Math.random() - .5)*.6, .3, G.stain.z + (Math.random() - .5)*.6); burst(_v, 'soul', 1, .3, -1.2, 1.0); }
+    if (Math.hypot(P.pos.x - G.stain.x, P.pos.z - G.stain.z) < 1.3){
+      addSouls(G.stain.souls); sfx.soul(); banner('魂を取り戻した', 'soft', 1.6, '');
+      stainSprite.visible = false; stainSprite = null; G.stain = null; save();
+    }
+  }
+  if (timers.length){ const due = timers.filter(t => simTime >= t.t); if (due.length){ timers = timers.filter(t => simTime < t.t); due.forEach(t => t.fn()); } }
+  if (!stage) return;
+  areaName();
+  const targetFog = bossFight ? stage._bossFog : stage._fog;
+  scene.fog.color.lerp(targetFog, Math.min(1, dt*.8)); scene.background.copy(scene.fog.color);
+  moonSprite.material.color.lerp(boss && boss.phase2 && bossFight ? _c.set(0xff8a8a) : _c.set(0xffffff), Math.min(1, dt));
+}
+function animateWorld(dt, now){
+  for (const f of flames){
+    if (!f.on) continue;
+    f.cones.forEach((c, i) => { const n = Math.sin(now*9 + f.seed + i*2) * .12 + Math.sin(now*23 + i) * .06; c.scale.set(1 + n, 1 + n*2 + Math.random()*.08, 1 + n); c.rotation.y += dt*(1 + i); });
+    if (f.light) f.light.intensity = 1.9 + Math.sin(now*11 + f.seed)*.2 + Math.random()*.15;
+  }
+  if (gate) gate.g.children.forEach((p, i) => { p.material.map.offset.y = (now*.07*(i + 1)) % 1; p.material.map.offset.x = Math.sin(now*.3 + i)*.2; p.material.opacity = .5 + Math.sin(now*1.3 + i)*.12; });
+  runes.forEach((r, i) => { r.m.material.opacity = .65 + Math.sin(now*2 + i)*.25; });
+  for (const s of spinners){
+    if (s.pulse){ s.obj.material.opacity = .35 + Math.sin(now*1.6 + s.seed)*.15; continue; }
+    s.obj.rotation.y += s.rot*dt; s.obj.rotation.x += s.rot*.5*dt; s.obj.position.y = s.y0 + Math.sin(now*s.bob + s.seed)*.5;
+  }
+}
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(.05, (now - last)/1000); last = now;
+  const sim = running && !paused && !menu;
+  let sdt = 0;
+  pollPadMenus();
+  if (sim){ sdt = dt; if (hitStop > 0){ hitStop -= dt; sdt = dt*.08; } step(sdt); }
+  pressed.clear();
+  animateWorld(dt, now/1000);
+  updateFx(sdt);
+  updateCamera(sim ? dt : 0);
+  renderer.render(scene, camera);
+  if (running) updateHUD(dt);
+}
+
+// ---------- タイトル ----------
+let confirmNew = false;
+function showTitle(){
+  $('title').hidden = false; confirmNew = false;
+  const s = readSave();
+  $('contBtn').hidden = !s;
+  if (s){
+    const where = s.loc && STAGES[s.loc.stage] ? STAGES[s.loc.stage].name : '月影の祭壇';
+    $('contInfo').textContent = `${where}　レベル ${(s.vit||1) + (s.end||1) + (s.str||1) - 2}`;
+  }
+  $('newBtn').innerHTML = 'はじめから'; $('newBtn').classList.remove('warn');
+  // 背景：城の入口を回るカメラ
+  bossFight = false; droneOff(); timers = []; $('fade').classList.remove('on');
+  unloadStage(); loadStage('castle');
+}
+function startGame(fromSave){
+  audioInit();
+  $('title').hidden = true; $('hud').hidden = false; running = true; paused = false; menu = null;
+  const s = fromSave ? readSave() : null;
+  if (s){ applySave(s); } else resetProgress();
+  const loc = G.loc;
+  if (loc && STAGES[loc.stage]) enterStage(loc.stage, loc.bonfire); else enterStage('nexus');
+  soulShown = P.souls;
+  banner(stage.name, 'soft', 2.2, stage.sub || '');
+  requestLock();
+}
+$('contBtn').addEventListener('click', () => startGame(true));
+$('newBtn').addEventListener('click', () => {
+  if (readSave() && !confirmNew){ confirmNew = true; $('newBtn').innerHTML = 'はじめから<small>もう一度押すと、今のセーブを消して始めます</small>'; $('newBtn').classList.add('warn'); return; }
+  $('newBtn').classList.remove('warn'); store.del(SAVE_KEY); startGame(false);
+});
+
+recompute();
+showTitle();
+requestAnimationFrame(frame);
