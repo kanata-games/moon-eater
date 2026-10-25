@@ -7,18 +7,22 @@
 //   ・読み込めなかった時（file:// で開いた時など）は、今までの見た目のまま遊べる
 // =========================================================
 const MODEL_FILES = {
-  astarte: { url: 'models/astarte.glb', height: 1.9 },   // 画面での背の高さ
-  umine:   { url: 'models/umine.glb',   height: 1.95 }
+  // height=画面での背の高さ line=輪郭線の太さ（薄い布や髪が重なるモデルは細く）
+  astarte: { url: 'models/astarte.glb', height: 1.9,  line: .0055 },
+  umine:   { url: 'models/umine.glb',   height: 1.95, line: .0022 }
 };
 const MODEL_DATA = {};      // id -> 読み込んだ glTF
 const MODEL_WAIT = {};      // id -> 読み込み待ちの体 H の一覧
 
-// 輪郭線（骨で曲がる版）
-const OUTLINE_SKIN = (() => {
+// 輪郭線（骨で曲がる版）。太さごとに1つ作って使い回す
+const OUTLINE_SKIN = {};
+function outlineSkin(w){
+  if (OUTLINE_SKIN[w]) return OUTLINE_SKIN[w];
   const m = new THREE.MeshBasicMaterial({ color: 0x110d18, side: THREE.BackSide, skinning: true });
-  m.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = position + normal * 0.0055;'); };
-  return m;
-})();
+  m.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = position + normal * ' + w.toFixed(4) + ';'); };
+  m.customProgramCacheKey = () => 'outline' + w;
+  return (OUTLINE_SKIN[w] = m);
+}
 
 (function preloadModels(){
   if (!THREE.GLTFLoader || !THREE.SkeletonUtils) return;
@@ -60,7 +64,7 @@ function attachModel(H, id){
     o.material = m; o.frustumCulled = false; o.castShadow = true; skinned.push(o);
   });
   skinned.forEach(o => {
-    const line = new THREE.SkinnedMesh(o.geometry, OUTLINE_SKIN);
+    const line = new THREE.SkinnedMesh(o.geometry, outlineSkin(MODEL_FILES[id].line));
     line.bind(o.skeleton, o.bindMatrix); line.bindMode = o.bindMode; line.frustumCulled = false; line.userData.outline = true;
     o.parent.add(line);
   });
