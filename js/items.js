@@ -53,8 +53,16 @@ const HOLDS = {
 };
 // 持ち方を反映（on=構えていない時。攻撃中などは0へ戻す）
 function holdPose(H, holdId, on, k, swing = 0){
-  const h = HOLDS[holdId] || HOLDS.down, t = on ? h.w : [0, 0, 0], r = H.wpn.rotation;
+  const h = HOLDS[holdId] || HOLDS.down, t = (on ? h.w : [0, 0, 0]).slice(), r = H.wpn.rotation;
+  // 杖や大鎌のように逆さに立てて持つ武器は、構え直す時に頭が「上」を通るように回す
+  //（下を通ると、杖を下から取り出すように見えるため）
+  if (Math.abs(h.w[0]) > Math.PI/2){
+    if (!on && r.x > Math.PI/2) t[0] = Math.PI*2;          // 立てた杖 → 前へ：上を越えて振り下ろす
+    else if (on && r.x < Math.PI/2 && r.x > -Math.PI/2) t[0] = h.w[0] - Math.PI*2;  // 前 → 立てる：上を越えて戻す
+    else if (on && r.x <= -Math.PI/2) t[0] = h.w[0] - Math.PI*2;
+  }
   r.x += (t[0] - r.x)*k; r.y += (t[1] - r.y)*k; r.z += (t[2] - r.z)*k;
+  if (!on && Math.abs(r.x - Math.PI*2) < .02) r.x -= Math.PI*2;
   if (on && h.aR) applyPose(H, { aR: [h.aR[0] + swing*.12, h.aR[1], h.aR[2]] }, k);
 }
 // 盾なしのときの値
