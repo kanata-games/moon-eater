@@ -59,7 +59,7 @@ function attachModel(H, id){
     if (!o.isSkinnedMesh) return;
     const src = o.material, map = src.map || null;
     if (map){ map.encoding = THREE.LinearEncoding; map.needsUpdate = true; }
-    const m = new THREE.MeshToonMaterial({ color: 0xffffff, map, gradientMap: TOON_GRAD, skinning: true });
+    const m = new THREE.MeshToonMaterial({ color: 0xffffff, map, gradientMap: TOON_GRAD, skinning: true, side: src.side });
     m.emissive = new THREE.Color(0x2a2a2a); m.emissiveMap = map;
     o.material = m; o.frustumCulled = false; o.castShadow = true; skinned.push(o);
   });
