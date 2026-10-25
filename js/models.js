@@ -38,8 +38,8 @@ for (const id in MODEL_FILES){
   CHARS[id].build = () => { const H = orig(); if (MODEL_DATA[id]) attachModel(H, id); else if (MODEL_WAIT[id]) MODEL_WAIT[id].push(H); return H; };
 }
 
-const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qI = new THREE.Quaternion();
-const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _DOWN = new THREE.Vector3(0, -1, 0), _AX = new THREE.Vector3(1, 0, 0);
+const _mq1 = new THREE.Quaternion(), _mq2 = new THREE.Quaternion(), _mq3 = new THREE.Quaternion(), _mqI = new THREE.Quaternion();
+const _mv1 = new THREE.Vector3(), _mv2 = new THREE.Vector3(), _mDOWN = new THREE.Vector3(0, -1, 0), _mAX = new THREE.Vector3(1, 0, 0);
 
 function attachModel(H, id){
   if (H.model) return;
@@ -105,12 +105,12 @@ function detachModel(H){
 // キャラ基準の回転 D を骨に入れる： local = L · (W⁻¹ · D · W)
 function setBone(M, name, D){
   const r = M.rest[name]; if (!r) return;
-  r.b.quaternion.copy(r.L).multiply(_q3.copy(r.Wi).multiply(D).multiply(r.W));
+  r.b.quaternion.copy(r.L).multiply(_mq3.copy(r.Wi).multiply(D).multiply(r.W));
 }
 function aimBone(M, name, rest0, parentQ, dirWorld){
   // 親の回りを除いた向きへ、休みの向き rest0 から最短で回す
-  _v1.copy(dirWorld).applyQuaternion(_q2.copy(parentQ).invert());
-  setBone(M, name, _q1.setFromUnitVectors(rest0, _v1.normalize()));
+  _mv1.copy(dirWorld).applyQuaternion(_mq2.copy(parentQ).invert());
+  setBone(M, name, _mq1.setFromUnitVectors(rest0, _mv1.normalize()));
 }
 
 function driveModel(H, dt){
@@ -118,31 +118,31 @@ function driveModel(H, dt){
   const rigQ = H.rig.quaternion, torQ = H.torso.quaternion;
   // 腰（体全体の傾き・前転）と高さ
   setBone(M, 'Hips', rigQ);
-  M.B.Hips.position.copy(_v1.set(0, (H.rig.position.y - .75)*M.hipK/M.s, 0).applyMatrix3(M.hipsPMi).add(M.hipsRest));
+  M.B.Hips.position.copy(_mv1.set(0, (H.rig.position.y - .75)*M.hipK/M.s, 0).applyMatrix3(M.hipsPMi).add(M.hipsRest));
   // 背骨（3つに分ける）と頭
-  _q1.copy(_qI).slerp(torQ, 1/3);
-  setBone(M, 'Spine', _q1); setBone(M, 'Spine1', _q1); setBone(M, 'Spine2', _q1);
+  _mq1.copy(_mqI).slerp(torQ, 1/3);
+  setBone(M, 'Spine', _mq1); setBone(M, 'Spine1', _mq1); setBone(M, 'Spine2', _mq1);
   setBone(M, 'Head', H.head.quaternion);
   // 腕：骨組みの腕と同じ方向へ。肘は少しだけ曲げる
-  const upQ = _q2.copy(rigQ).multiply(torQ).clone();
-  const armDir = (arm) => _v2.copy(_DOWN).applyQuaternion(_q1.copy(upQ).multiply(arm.quaternion)).clone();
+  const upQ = _mq2.copy(rigQ).multiply(torQ).clone();
+  const armDir = (arm) => _mv2.copy(_mDOWN).applyQuaternion(_mq1.copy(upQ).multiply(arm.quaternion)).clone();
   aimBone(M, 'RightArm', M.armR0, upQ, armDir(H.armR));
   aimBone(M, 'LeftArm', M.armL0, upQ, armDir(H.armL));
-  setBone(M, 'RightForeArm', _q1.setFromAxisAngle(_v1.set(0, 1, 0), .18));
-  setBone(M, 'LeftForeArm', _q1.setFromAxisAngle(_v1.set(0, 1, 0), -.18));
+  setBone(M, 'RightForeArm', _mq1.setFromAxisAngle(_mv1.set(0, 1, 0), .18));
+  setBone(M, 'LeftForeArm', _mq1.setFromAxisAngle(_mv1.set(0, 1, 0), -.18));
   // 脚：骨組みの脚の向き＋膝（前へ振る時と、脚を高く上げた時に曲げる）
   [['R', H.legR, M.legR0], ['L', H.legL, M.legL0]].forEach(([side, leg, r0]) => {
     const n = side === 'R' ? 'Right' : 'Left', st = M.knee[side], a = leg.rotation.x;
     const v = dt > 0 ? (a - st.a)/dt : 0; st.a = a;
     const want = Math.min(1.9, .06 + Math.max(0, -v)*.22 + Math.max(0, -a - .55)*1.25);
     st.k += (want - st.k)*Math.min(1, dt*14 || 1);
-    aimBone(M, n + 'UpLeg', r0, rigQ, _v2.copy(_DOWN).applyQuaternion(_q1.copy(rigQ).multiply(leg.quaternion)));
-    setBone(M, n + 'Leg', _q1.setFromAxisAngle(_AX, st.k));
-    setBone(M, n + 'Foot', _q1.setFromAxisAngle(_AX, -st.k*.5));
+    aimBone(M, n + 'UpLeg', r0, rigQ, _mv2.copy(_mDOWN).applyQuaternion(_mq1.copy(rigQ).multiply(leg.quaternion)));
+    setBone(M, n + 'Leg', _mq1.setFromAxisAngle(_mAX, st.k));
+    setBone(M, n + 'Foot', _mq1.setFromAxisAngle(_mAX, -st.k*.5));
   });
   // 武器と盾を、モデルの手の位置へ
   H.root.updateMatrixWorld(true);
-  const hand = (a, b, f) => M.B[a].getWorldPosition(_v1).lerp(M.B[b] ? M.B[b].getWorldPosition(_v2) : _v1, f);
+  const hand = (a, b, f) => M.B[a].getWorldPosition(_mv1).lerp(M.B[b] ? M.B[b].getWorldPosition(_mv2) : _mv1, f);
   H.wpn.position.copy(H.armR.worldToLocal(hand('RightHand', 'RightHandMiddle1', .6).clone()));
   if (H.shieldPivot){
     const p = H.armL.worldToLocal(hand('LeftForeArm', 'LeftHand', .55).clone());
