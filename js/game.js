@@ -12,13 +12,14 @@ function later(sec, fn){ timers.push({ t: simTime + sec, fn }); }
 // ---------- セーブ ----------
 const SAVE_KEY = 'save1';
 function save(){
-  store.set(SAVE_KEY, { v: 1, char: P.char, eq: P.eq, inv: G.inv, vit: P.vit, end: P.end, str: P.str, souls: P.souls, lit: G.lit, bosses: G.bosses, taken: G.taken, opened: G.opened, stain: G.stain, loc: G.loc, bonfire: P.bonfire, at: Date.now() });
+  store.set(SAVE_KEY, { v: 2, char: P.char, eq: P.eq, inv: G.inv, vit: P.vit, end: P.end, str: P.str, souls: P.souls, lit: G.lit, bosses: G.bosses, taken: G.taken, opened: G.opened, stain: G.stain, loc: G.loc, bonfire: P.bonfire, at: Date.now() });
 }
-function readSave(){ const s = store.get(SAVE_KEY, null); return s && s.v === 1 ? s : null; }
+function readSave(){ const s = store.get(SAVE_KEY, null); return s && (s.v === 1 || s.v === 2) ? s : null; }
 function applySave(s){
   const C = CHARS[s.char] || CHARS.astarte;
   G.inv = Array.isArray(s.inv) ? s.inv.slice() : C.start.inv.slice();
   P.eq = s.eq ? { r: s.eq.r, l: s.eq.l } : { r: C.start.r, l: C.start.l };
+  if ((s.v || 1) < 2 && s.char === 'astarte' && P.eq.r === 'scythe') P.eq.r = 'moonStaff';   // 主武器を錫杖に変えた時の引き継ぎ
   (C.own || []).forEach(id => { if (!G.inv.includes(id)) G.inv.push(id); }); // 専用武器は最初から持っている
   setCharacter(s.char || 'astarte');
   P.vit = s.vit || 1; P.end = s.end || 1; P.str = s.str || 1; P.souls = s.souls || 0;
@@ -512,7 +513,7 @@ function animatePreviews(dt, t){
     if (on) applyPose(H, id === 'umine' ? { aR: [-1.3, 0, -.15], aL: [-.6, 0, .3], tor: [0, 0, 0] } : { aR: [-1.0, 0, -.6], aL: [-.3, 0, .2], tor: [.05, -.2, 0] }, Math.min(1, dt*6));
     else applyPose(H, { aR: REST.aR, aL: REST.aL, tor: [0, 0, 0] }, Math.min(1, dt*6));
     H.rig.position.y = .75 + Math.sin(t*1.8 + (id === 'umine' ? 1 : 0))*.015;
-    if (!on) holdPose(H, id === 'umine' ? 'staff' : 'scythe', true, Math.min(1, dt*6));
+    if (!on) holdPose(H, 'staff', true, Math.min(1, dt*6));
     else holdPose(H, 'down', false, Math.min(1, dt*6));
     if (H.anim) H.anim(dt, t, 0);
   }
