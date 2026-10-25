@@ -276,7 +276,8 @@ function updatePlayer(dt, I){
   H.root.position.set(P.pos.x, 0, P.pos.z); H.root.rotation.y = P.face;
   // 武器の持ち方（構えていない間は武器ごとの持ち方に）
   const guardWithWeapon = P.guarding && !H.shieldPivot;
-  const holdOn = ['idle', 'guardHit', 'heal', 'stagger', 'roll', 'gate', 'guardBreak'].includes(P.state) && !guardWithWeapon;
+  const castBack = (P.state === 'cast' || P.state === 'castHeavy') && WEP().hold === 'staff' && P.t > ACT[P.state].act[1];  // 魔法を撃った後は杖を立て直す
+  const holdOn = (['idle', 'guardHit', 'heal', 'stagger', 'roll', 'gate', 'guardBreak'].includes(P.state) || castBack) && !guardWithWeapon;
   holdPose(H, WEP().hold, holdOn, Math.min(1, dt*14), Math.sin(P.walk)*Math.min(1, ml));
   if (H.bubble) H.bubble.visible = H.guardStyle === 'bubble' && (P.guarding || P.state === 'guardHit');
   if (H.wpn.userData.spin) H.wpn.userData.spin.rotation.y += dt*2;
