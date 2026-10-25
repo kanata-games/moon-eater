@@ -44,6 +44,7 @@ js/
 models/
   astarte.glb     アスターテ（Tripo製・骨入り）
   umine.glb       海音（Tripo製・骨入り）
+  weapons/        武器のモデル（骨なし。握り=原点、先端=下向きにそろえてある）
 stages/
   nexus.js        拠点「月影の祭壇」（要石の一覧 ARCHSTONES もここ）
   castle.js       ステージ1「月喰いの城」

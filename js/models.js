@@ -158,3 +158,39 @@ function driveModel(H, dt){
     H.shieldPivot.position.set(p.x + .05, p.y, p.z + .08);
   }
 }
+
+// =========================================================
+// 武器のモデル（骨なし）。握り=原点、先端=-Y に向けて作ってある
+//   読み込めたら、箱で作った武器の代わりにこのモデルを持つ
+// =========================================================
+const WEAPON_MODELS = {
+  moonStaff: { url: 'models/weapons/moon_staff.glb', tip: -1.95 }
+};
+const WEAPON_DATA = {};
+(function preloadWeapons(){
+  if (!THREE.GLTFLoader) return;
+  const loader = new THREE.GLTFLoader();
+  for (const id in WEAPON_MODELS){
+    loader.load(WEAPON_MODELS[id].url, g => {
+      g.scene.traverse(o => {
+        if (!o.isMesh) return;
+        const map = o.material.map; if (map){ map.encoding = THREE.LinearEncoding; map.needsUpdate = true; }
+        // トゥーン材質にすると equipVisual が輪郭線を付けるので、ランバートで明るめに
+        o.material = new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide, emissive: 0x3a3a3a, emissiveMap: map });
+      });
+      WEAPON_DATA[id] = g;
+      // 今その武器を持っている体を作り直す
+      if (typeof P !== 'undefined' && P.H && P.eq && P.eq.r === id) equipVisual(P.H, P.eq.r, P.eq.l);
+    });
+  }
+})();
+// WVIS（箱の武器）を包んで、モデルがあればそちらを使う
+for (const id in WEAPON_MODELS){
+  const orig = WVIS[id];
+  WVIS[id] = (g, box, M) => {
+    const d = WEAPON_DATA[id];
+    if (!d) return orig(g, box, M);
+    g.add(d.scene.clone());
+    return WEAPON_MODELS[id].tip;
+  };
+}
