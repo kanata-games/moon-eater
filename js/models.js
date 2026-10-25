@@ -7,13 +7,18 @@
 //   ・読み込めなかった時（file:// で開いた時など）は、今までの見た目のまま遊べる
 // =========================================================
 const MODEL_FILES = {
-  // height=画面での背の高さ line=輪郭線の太さ（薄い布や髪が重なるモデルは細く）
-  astarte: { url: 'models/astarte.glb', height: 1.9,  line: .0055 },
-  umine:   { url: 'models/umine.glb',   height: 1.95, line: .0022 }
+  // height=画面での背の高さ line=輪郭線の太さ（0で無し。顔のくぼみから線がはみ出すので今は無し）
+  astarte: { url: 'models/astarte.glb', height: 1.9,  line: 0 },
+  umine:   { url: 'models/umine.glb',   height: 1.95, line: 0 }
 };
 const MODEL_DATA = {};      // id -> 読み込んだ glTF
 const MODEL_WAIT = {};      // id -> 読み込み待ちの体 H の一覧
 
+// モデル用のやわらかい陰影（濃い影だと顔が暗く沈んで怖く見えるため）
+const MODEL_GRAD = (() => {
+  const d = new Uint8Array([190, 190, 190, 226, 226, 226, 255, 255, 255]);
+  const t = new THREE.DataTexture(d, 3, 1, THREE.RGBFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t;
+})();
 // 輪郭線（骨で曲がる版）。太さごとに1つ作って使い回す
 const OUTLINE_SKIN = {};
 function outlineSkin(w){
@@ -59,11 +64,11 @@ function attachModel(H, id){
     if (!o.isSkinnedMesh) return;
     const src = o.material, map = src.map || null;
     if (map){ map.encoding = THREE.LinearEncoding; map.needsUpdate = true; }
-    const m = new THREE.MeshToonMaterial({ color: 0xffffff, map, gradientMap: TOON_GRAD, skinning: true, side: src.side });
-    m.emissive = new THREE.Color(0x2a2a2a); m.emissiveMap = map;
+    const m = new THREE.MeshToonMaterial({ color: 0xffffff, map, gradientMap: MODEL_GRAD, skinning: true, side: src.side });
+    m.emissive = new THREE.Color(0x404040); m.emissiveMap = map;
     o.material = m; o.frustumCulled = false; o.castShadow = true; skinned.push(o);
   });
-  skinned.forEach(o => {
+  if (MODEL_FILES[id].line > 0) skinned.forEach(o => {
     const line = new THREE.SkinnedMesh(o.geometry, outlineSkin(MODEL_FILES[id].line));
     line.bind(o.skeleton, o.bindMatrix); line.bindMode = o.bindMode; line.frustumCulled = false; line.userData.outline = true;
     o.parent.add(line);
